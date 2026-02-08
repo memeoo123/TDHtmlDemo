@@ -1,0 +1,1184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>策略弹球棋子游戏</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #1a1a2e;
+            color: #eee;
+            font-family: 'Microsoft YaHei', sans-serif;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        h1 { margin-bottom: 10px; font-size: 24px; color: #e0e0ff; }
+        #controls {
+            margin-bottom: 10px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        #controls button {
+            padding: 6px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-family: inherit;
+        }
+        #btn-pause { background: #f0ad4e; color: #333; }
+        #btn-resume { background: #5cb85c; color: #fff; }
+        #btn-reset { background: #d9534f; color: #fff; }
+        #controls button:hover { opacity: 0.85; }
+        #info {
+            margin-bottom: 10px;
+            font-size: 14px;
+            color: #aaa;
+        }
+        #info span { margin: 0 10px; }
+        canvas {
+            border: 2px solid #444;
+            border-radius: 6px;
+            background: #0f0f23;
+        }
+    </style>
+</head>
+<body>
+    <h1>策略弹球棋子游戏</h1>
+    <div id="controls">
+        <button id="btn-pause">暂停</button>
+        <button id="btn-resume">继续</button>
+        <button id="btn-reset">重置</button>
+    </div>
+    <div id="info">
+        <span>分数: <strong id="score">0</strong></span>
+        <span>突破: <strong id="breaches">0</strong></span>
+        <span>士兵: <strong id="soldierCount">0</strong></span>
+        <span>敌人: <strong id="enemyCount">0</strong></span>
+        <span>弹球: <strong id="ballCount">0</strong></span>
+    </div>
+    <canvas id="gameCanvas" width="600" height="700"></canvas>
+
+<script src="board-config.js"></script>
+<script src="combat-behaviors.js"></script>
+<script src="combat-renderers.js"></script>
+
+<script>
+// ============================================================
+// 弹球台配置
+// ============================================================
+const BoardConfig = {
+    width: 600,
+    height: 700,
+    pinballAreaHeight: 500,
+    groundAreaHeight: 200,
+    groundY: 500,
+    pinRows: 9,
+    pinCols: 12,
+    pinSpacingX: 45,
+    pinSpacingY: 45,
+    pinStartX: 45,
+    pinStartY: 60,
+    wallThickness: 10
+};
+
+// 如果外部 board-config.js 已加载，用它覆盖默认值
+if (typeof BOARD_CONFIG_EXTERNAL !== 'undefined') {
+    Object.assign(BoardConfig, BOARD_CONFIG_EXTERNAL);
+    const cv = document.getElementById('gameCanvas');
+    cv.width = BoardConfig.width;
+    cv.height = BoardConfig.height;
+}
+
+// ============================================================
+// 棋子类型配置（内置默认值，可被外部 JSON 覆盖）
+// ============================================================
+let PIECE_TYPES = {
+    FIRE: {
+        name: '火战士',
+        color: '#FF4444',
+        fireInterval: 2000,
+        ballSpeed: 3,
+        combatType: 'melee',
+        soldierHP: 5,
+        soldierAttack: 2,
+        soldierSpeed: 1.5,
+        price: 10
+    },
+    ICE: {
+        name: '冰法师',
+        color: '#44AAFF',
+        fireInterval: 3000,
+        ballSpeed: 2,
+        combatType: 'ranged',
+        soldierHP: 3,
+        soldierAttack: 1.5,
+        soldierSpeed: 1,
+        attackRange: 150,
+        projectileSpeed: 4,
+        attackInterval: 1000,
+        price: 15
+    },
+    THUNDER: {
+        name: '雷战士',
+        color: '#FFDD44',
+        fireInterval: 1500,
+        ballSpeed: 4,
+        combatType: 'melee',
+        soldierHP: 3,
+        soldierAttack: 3,
+        soldierSpeed: 2,
+        price: 12
+    }
+};
+let PIECE_TYPE_LIST = Object.values(PIECE_TYPES);
+
+// ============================================================
+// PinPoint 点位类
+// ============================================================
+class PinPoint {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.radius = 8;
+        this.chessPiece = null;
+    }
+    isEmpty() {
+        return this.chessPiece === null;
+    }
+    placePiece(type) {
+        this.chessPiece = new ChessPiece(type, this);
+    }
+    removePiece() {
+        this.chessPiece = null;
+    }
+}
+
+// ============================================================
+// ChessPiece 棋子类
+// ============================================================
+class ChessPiece {
+    constructor(type, pinPoint) {
+        this.type = type;
+        this.pinPoint = pinPoint;
+        this.lastFireTime = 0;
+    }
+    canFire(now) {
+        return (now - this.lastFireTime) >= this.type.fireInterval;
+    }
+    fire(now) {
+        if (!this.canFire(now)) return null;
+        this.lastFireTime = now;
+        // 随机方向发射
+        const angle = Math.random() * Math.PI * 2;
+        const speed = this.type.ballSpeed;
+        const vx = Math.cos(angle) * speed;
+        const vy = Math.sin(angle) * speed;
+        return new Ball(this.pinPoint.x, this.pinPoint.y, vx, vy, this.type);
+    }
+}
+
+// ============================================================
+// Ball 棋子弹球类
+// ============================================================
+class Ball {
+    constructor(x, y, vx, vy, type) {
+        this.x = x;
+        this.y = y;
+        this.vx = vx;
+        this.vy = vy;
+        this.type = type;
+        this.radius = 5;
+        this.alive = true;
+    }
+    update(dt) {
+        if (!this.alive) return;
+        this.vy += Physics.GRAVITY;
+        this.x += this.vx;
+        this.y += this.vy;
+    }
+    kill() {
+        this.alive = false;
+    }
+}
+
+// ============================================================
+// Soldier 棋子士兵类
+// ============================================================
+class Soldier {
+    constructor(x, groundY, type) {
+        this.x = x;
+        this.y = groundY;
+        this.type = type;
+        this.combatType = type.combatType;
+        this.hp = type.soldierHP;
+        this.maxHp = type.soldierHP;
+        this.attack = type.soldierAttack;
+        this.speed = type.soldierSpeed;
+        this.attackRange = type.attackRange || 0;
+        this.attackInterval = type.attackInterval || 0;
+        this.projectileSpeed = type.projectileSpeed || 0;
+        this.lastAttackTime = 0;
+        this.alive = true;
+        this.target = null;
+        this.size = 12;
+        this.direction = 1; // 士兵向右移动
+    }
+    update(dt, enemies, now) {
+        if (!this.alive) return;
+        const behavior = COMBAT_BEHAVIORS[this.combatType];
+        if (behavior) {
+            behavior.findTarget(this, enemies);
+            behavior.move(this, dt);
+        }
+        // 超出右边界移除
+        if (this.x > BoardConfig.width) {
+            this.alive = false;
+        }
+    }
+    takeDamage(dmg) {
+        this.hp -= dmg;
+        if (this.hp <= 0) {
+            this.hp = 0;
+            this.alive = false;
+        }
+    }
+}
+
+// ============================================================
+// 敌人类型配置（内置默认值，可被外部 JSON 覆盖）
+// ============================================================
+let ENEMY_TYPES = {
+    GRUNT: {
+        name: '步兵',
+        color: '#AA3333',
+        combatType: 'melee',
+        hp: 4,
+        attack: 1,
+        speed: 1,
+        score: 10
+    },
+    ARCHER: {
+        name: '弓箭手',
+        color: '#33AA33',
+        combatType: 'ranged',
+        hp: 2,
+        attack: 1.5,
+        speed: 0.8,
+        attackRange: 120,
+        projectileSpeed: 3,
+        attackInterval: 1200,
+        score: 15
+    }
+};
+let ENEMY_TYPE_LIST = Object.values(ENEMY_TYPES);
+
+// ============================================================
+// Enemy 敌人类
+// ============================================================
+class Enemy {
+    constructor(x, groundY, enemyType) {
+        this.x = x;
+        this.y = groundY;
+        this.enemyType = enemyType;
+        this.combatType = enemyType.combatType;
+        this.hp = enemyType.hp;
+        this.maxHp = enemyType.hp;
+        this.attack = enemyType.attack;
+        this.speed = enemyType.speed;
+        this.attackRange = enemyType.attackRange || 0;
+        this.attackInterval = enemyType.attackInterval || 0;
+        this.projectileSpeed = enemyType.projectileSpeed || 0;
+        this.lastAttackTime = 0;
+        this.alive = true;
+        this.target = null;
+        this.size = 12;
+        this.score = enemyType.score || 10;
+        this.direction = -1; // 敌人向左移动
+    }
+    update(dt, soldiers, now) {
+        if (!this.alive) return;
+        const behavior = COMBAT_BEHAVIORS[this.combatType];
+        if (behavior) {
+            behavior.findTarget(this, soldiers);
+            behavior.move(this, dt);
+        }
+    }
+    takeDamage(dmg) {
+        this.hp -= dmg;
+        if (this.hp <= 0) {
+            this.hp = 0;
+            this.alive = false;
+        }
+    }
+}
+
+// ============================================================
+// Projectile 投射物类
+// ============================================================
+class Projectile {
+    constructor(x, y, targetX, targetY, damage, speed, fromFriendly) {
+        this.x = x;
+        this.y = y;
+        this.damage = damage;
+        this.fromFriendly = fromFriendly;
+        this.alive = true;
+        this.radius = 3;
+        const dx = targetX - x;
+        const dy = targetY - y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        this.vx = (dx / dist) * speed;
+        this.vy = (dy / dist) * speed;
+    }
+    update(dt) {
+        if (!this.alive) return;
+        this.x += this.vx;
+        this.y += this.vy;
+        // 超出边界移除
+        if (this.x < 0 || this.x > BoardConfig.width || this.y < 0 || this.y > BoardConfig.height) {
+            this.alive = false;
+        }
+    }
+    checkHit(targets) {
+        if (!this.alive) return;
+        for (const t of targets) {
+            if (!t.alive) continue;
+            const dx = this.x - t.x;
+            const dy = this.y - (t.y - t.size / 2);
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < this.radius + t.size / 2) {
+                t.takeDamage(this.damage);
+                this.alive = false;
+                return t;
+            }
+        }
+        return null;
+    }
+}
+
+// ============================================================
+// Combat 战斗系统
+// ============================================================
+class Combat {
+    static MELEE_RANGE = 16;
+
+    static checkMeleeEngagement(soldiers, enemies) {
+        for (const s of soldiers) {
+            if (!s.alive) continue;
+            const behavior = COMBAT_BEHAVIORS[s.combatType];
+            if (!behavior) continue;
+            for (const e of enemies) {
+                if (!e.alive) continue;
+                if (behavior.canEngage(s, e)) {
+                    s.target = e;
+                    const eBehavior = COMBAT_BEHAVIORS[e.combatType];
+                    if (eBehavior && eBehavior.canEngage(e, s)) {
+                        e.target = s;
+                    }
+                }
+            }
+        }
+    }
+
+    static processMeleeCombat(soldiers, enemies, dt) {
+        for (const s of soldiers) {
+            if (!s.alive || !s.target || !s.target.alive) continue;
+            const behavior = COMBAT_BEHAVIORS[s.combatType];
+            if (!behavior || !behavior.canEngage(s, s.target)) continue;
+            // 只有近战型才在此处理伤害（远程由 processRangedAttacks 处理）
+            if (s.combatType === 'melee') {
+                s.target.takeDamage(s.attack * dt / 1000);
+                s.takeDamage(s.target.attack * dt / 1000);
+            }
+        }
+    }
+
+    static processRangedAttacks(soldiers, enemies, projectiles, now) {
+        // 所有远程单位（士兵和敌人）通过策略判定后发射投射物
+        for (const s of soldiers) {
+            if (!s.alive || s.combatType !== 'ranged' || !s.target || !s.target.alive) continue;
+            const behavior = COMBAT_BEHAVIORS[s.combatType];
+            if (!behavior || !behavior.canEngage(s, s.target)) continue;
+            if ((now - s.lastAttackTime) >= s.attackInterval) {
+                s.lastAttackTime = now;
+                projectiles.push(new Projectile(
+                    s.x, s.y - s.size / 2,
+                    s.target.x, s.target.y - s.target.size / 2,
+                    s.attack, s.projectileSpeed, true
+                ));
+            }
+        }
+        for (const e of enemies) {
+            if (!e.alive || e.combatType !== 'ranged' || !e.target || !e.target.alive) continue;
+            const behavior = COMBAT_BEHAVIORS[e.combatType];
+            if (!behavior || !behavior.canEngage(e, e.target)) continue;
+            if ((now - e.lastAttackTime) >= e.attackInterval) {
+                e.lastAttackTime = now;
+                projectiles.push(new Projectile(
+                    e.x, e.y - e.size / 2,
+                    e.target.x, e.target.y - e.target.size / 2,
+                    e.attack, e.projectileSpeed, false
+                ));
+            }
+        }
+    }
+
+    static processProjectiles(projectiles, soldiers, enemies) {
+        for (const p of projectiles) {
+            if (!p.alive) continue;
+            if (p.fromFriendly) {
+                p.checkHit(enemies);
+            } else {
+                p.checkHit(soldiers);
+            }
+        }
+    }
+
+    static cleanup(soldiers, enemies, projectiles) {
+        // 返回新的过滤后数组
+        return {
+            soldiers: soldiers.filter(s => s.alive),
+            enemies: enemies.filter(e => e.alive),
+            projectiles: projectiles.filter(p => p.alive)
+        };
+    }
+}
+
+// ============================================================
+// 波次配置（内置默认值，可被外部 JSON 覆盖）
+// ============================================================
+let WAVE_CONFIGS = [
+    {
+        wave: 1,
+        enemies: [
+            { type: 'GRUNT', count: 5 }
+        ],
+        spawnInterval: 3000
+    },
+    {
+        wave: 2,
+        enemies: [
+            { type: 'GRUNT', count: 5 },
+            { type: 'ARCHER', count: 3 }
+        ],
+        spawnInterval: 2500
+    },
+    {
+        wave: 3,
+        enemies: [
+            { type: 'GRUNT', count: 8 },
+            { type: 'ARCHER', count: 5 }
+        ],
+        spawnInterval: 2000
+    }
+];
+
+// ============================================================
+// WaveManager 波次管理器
+// ============================================================
+class WaveManager {
+    constructor(waveConfigs) {
+        this.waveConfigs = waveConfigs || WAVE_CONFIGS;
+        this.currentWave = 1;
+        this.totalWaves = this.waveConfigs.length;
+        this.phase = 'shop'; // 'shop' | 'combat'
+        this.enemySpawnTimer = 0;
+        this.enemySpawnInterval = 3000;
+        this.enemySpawnQueue = []; // 待生成的敌人类型队列
+        this.totalEnemiesThisWave = 0;
+        this.spawnedCount = 0;
+        // 回调：清理战场（由 Game 设置）
+        this.onClearBattlefield = null;
+    }
+
+    startShopPhase() {
+        this.phase = 'shop';
+        this.enemySpawnTimer = 0;
+        this.enemySpawnQueue = [];
+        this.spawnedCount = 0;
+        // 通知 Game 清理战场残留
+        if (this.onClearBattlefield) {
+            this.onClearBattlefield();
+        }
+    }
+
+    startCombatPhase() {
+        this.phase = 'combat';
+        this.enemySpawnTimer = 0;
+        this.spawnedCount = 0;
+        // 初始化当前波次的敌人生成队列
+        const config = this.getCurrentWaveConfig();
+        if (!config) return;
+        this.enemySpawnInterval = config.spawnInterval;
+        this.enemySpawnQueue = [];
+        for (const entry of config.enemies) {
+            for (let i = 0; i < entry.count; i++) {
+                this.enemySpawnQueue.push(entry.type);
+            }
+        }
+        this.totalEnemiesThisWave = this.enemySpawnQueue.length;
+    }
+
+    update(dt, enemies) {
+        if (this.phase !== 'combat') return null;
+        // 按 spawnInterval 生成敌人
+        if (this.enemySpawnQueue.length > 0) {
+            this.enemySpawnTimer += dt;
+            if (this.enemySpawnTimer >= this.enemySpawnInterval) {
+                this.enemySpawnTimer = 0;
+                const typeName = this.enemySpawnQueue.shift();
+                this.spawnedCount++;
+                const enemyType = ENEMY_TYPES[typeName];
+                if (enemyType) {
+                    return enemyType; // 返回要生成的敌人类型
+                }
+            }
+        }
+        return null;
+    }
+
+    isWaveComplete(enemies) {
+        // 所有敌人已生成且场上无存活敌人
+        return this.enemySpawnQueue.length === 0 &&
+               this.spawnedCount >= this.totalEnemiesThisWave &&
+               enemies.filter(e => e.alive).length === 0;
+    }
+
+    isGameComplete(enemies) {
+        return this.currentWave >= this.totalWaves && this.isWaveComplete(enemies);
+    }
+
+    nextWave() {
+        if (this.currentWave < this.totalWaves) {
+            this.currentWave++;
+            this.startShopPhase();
+            return true;
+        }
+        return false;
+    }
+
+    getCurrentWaveConfig() {
+        if (this.currentWave <= this.waveConfigs.length) {
+            return this.waveConfigs[this.currentWave - 1];
+        }
+        return null;
+    }
+
+    getWaveEnemies() {
+        const config = this.getCurrentWaveConfig();
+        return config ? config.enemies : [];
+    }
+}
+
+// ============================================================
+// Physics 物理系统
+// ============================================================
+class Physics {
+    static GRAVITY = 0.15;
+
+    static checkPinCollision(ball, pin) {
+        const dx = ball.x - pin.x;
+        const dy = ball.y - pin.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const minDist = ball.radius + pin.radius;
+        if (dist < minDist && dist > 0) {
+            const nx = dx / dist;
+            const ny = dy / dist;
+            ball.x = pin.x + nx * minDist;
+            ball.y = pin.y + ny * minDist;
+            const dot = ball.vx * nx + ball.vy * ny;
+            ball.vx -= 2 * dot * nx;
+            ball.vy -= 2 * dot * ny;
+            ball.vx *= 0.92;
+            ball.vy *= 0.92;
+            return true;
+        }
+        return false;
+    }
+
+    static checkWallCollision(ball, bounds) {
+        const t = BoardConfig.wallThickness;
+        if (ball.x - ball.radius < t) {
+            ball.x = t + ball.radius;
+            ball.vx = Math.abs(ball.vx) * 0.9;
+        }
+        if (ball.x + ball.radius > bounds.width - t) {
+            ball.x = bounds.width - t - ball.radius;
+            ball.vx = -Math.abs(ball.vx) * 0.9;
+        }
+        if (ball.y - ball.radius < t) {
+            ball.y = t + ball.radius;
+            ball.vy = Math.abs(ball.vy) * 0.9;
+        }
+    }
+
+    static checkBallCollision(b1, b2) {
+        if (!b1.alive || !b2.alive) return false;
+        const dx = b2.x - b1.x;
+        const dy = b2.y - b1.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const minDist = b1.radius + b2.radius;
+        if (dist < minDist && dist > 0) {
+            const nx = dx / dist;
+            const ny = dy / dist;
+            const overlap = minDist - dist;
+            b1.x -= nx * overlap / 2;
+            b1.y -= ny * overlap / 2;
+            b2.x += nx * overlap / 2;
+            b2.y += ny * overlap / 2;
+            const dvx = b1.vx - b2.vx;
+            const dvy = b1.vy - b2.vy;
+            const dvDotN = dvx * nx + dvy * ny;
+            if (dvDotN > 0) {
+                b1.vx -= dvDotN * nx;
+                b1.vy -= dvDotN * ny;
+                b2.vx += dvDotN * nx;
+                b2.vy += dvDotN * ny;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    static checkGroundCollision(ball, groundY) {
+        if (ball.y + ball.radius >= groundY) {
+            ball.kill();
+            return true;
+        }
+        return false;
+    }
+}
+
+// ============================================================
+// Renderer 渲染器
+// ============================================================
+class Renderer {
+    constructor(ctx) {
+        this.ctx = ctx;
+    }
+
+    clear() {
+        this.ctx.clearRect(0, 0, BoardConfig.width, BoardConfig.height);
+    }
+
+    drawBoard() {
+        const ctx = this.ctx;
+        const w = BoardConfig.width;
+        const h = BoardConfig.height;
+        const t = BoardConfig.wallThickness;
+
+        ctx.fillStyle = '#0f0f23';
+        ctx.fillRect(0, 0, w, h);
+
+        ctx.fillStyle = '#334';
+        ctx.fillRect(0, 0, t, h);
+        ctx.fillRect(w - t, 0, t, h);
+        ctx.fillRect(0, 0, w, t);
+
+        ctx.strokeStyle = '#556';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.moveTo(t, BoardConfig.groundY);
+        ctx.lineTo(w - t, BoardConfig.groundY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = 'rgba(34, 40, 34, 0.5)';
+        ctx.fillRect(t, BoardConfig.groundY, w - 2 * t, BoardConfig.groundAreaHeight);
+    }
+
+    drawPinPoint(pin) {
+        const ctx = this.ctx;
+        ctx.beginPath();
+        ctx.arc(pin.x, pin.y, pin.radius, 0, Math.PI * 2);
+        if (pin.isEmpty()) {
+            ctx.fillStyle = '#667';
+            ctx.fill();
+            ctx.strokeStyle = '#889';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        } else {
+            const color = pin.chessPiece.type.color;
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(pin.x, pin.y, pin.radius + 4, 0, Math.PI * 2);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            // 棋子名称
+            ctx.fillStyle = '#fff';
+            ctx.font = '9px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(pin.chessPiece.type.name[0], pin.x, pin.y + 3);
+        }
+    }
+
+    drawBall(ball) {
+        if (!ball.alive) return;
+        const ctx = this.ctx;
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+        ctx.fillStyle = (ball.type && ball.type.color) ? ball.type.color : '#ddf';
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+    }
+
+    drawSoldier(soldier) {
+        if (!soldier.alive) return;
+        const ctx = this.ctx;
+        const renderer = COMBAT_RENDERERS[soldier.combatType];
+        if (renderer) {
+            renderer.drawSoldier(ctx, soldier);
+        }
+        // 生命值条
+        this.drawHealthBar(soldier.x, soldier.y - soldier.size - 6, soldier.size, 3, soldier.hp, soldier.maxHp, '#0f0');
+    }
+
+    drawHealthBar(x, y, width, height, hp, maxHp, color) {
+        const ctx = this.ctx;
+        const ratio = Math.max(0, hp / maxHp);
+        ctx.fillStyle = '#333';
+        ctx.fillRect(x - width / 2, y, width, height);
+        ctx.fillStyle = ratio > 0.5 ? color : (ratio > 0.25 ? '#ff0' : '#f00');
+        ctx.fillRect(x - width / 2, y, width * ratio, height);
+    }
+
+    drawEnemy(enemy) {
+        if (!enemy.alive) return;
+        const ctx = this.ctx;
+        const renderer = COMBAT_RENDERERS[enemy.combatType];
+        if (renderer) {
+            renderer.drawEnemy(ctx, enemy);
+        }
+        this.drawHealthBar(enemy.x, enemy.y - enemy.size - 6, enemy.size, 3, enemy.hp, enemy.maxHp, '#f44');
+    }
+
+    drawProjectile(proj) {
+        if (!proj.alive) return;
+        const ctx = this.ctx;
+        ctx.beginPath();
+        ctx.arc(proj.x, proj.y, proj.radius, 0, Math.PI * 2);
+        ctx.fillStyle = proj.fromFriendly ? '#8ff' : '#f88';
+        ctx.fill();
+    }
+
+    drawSelectionPanel(panel) {
+        const ctx = this.ctx;
+        const types = PIECE_TYPE_LIST;
+        const pw = 140;
+        const ph = 30 * types.length + 40;
+        let px = panel.x - pw / 2;
+        let py = panel.y - ph - 15;
+
+        // 确保面板在画布内
+        if (px < 5) px = 5;
+        if (px + pw > BoardConfig.width - 5) px = BoardConfig.width - pw - 5;
+        if (py < 5) py = panel.y + 15;
+
+        // 背景
+        ctx.fillStyle = 'rgba(20, 20, 40, 0.92)';
+        ctx.strokeStyle = '#88a';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(px, py, pw, ph, 6);
+        ctx.fill();
+        ctx.stroke();
+
+        // 标题
+        ctx.fillStyle = '#ccc';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('选择棋子类型', px + pw / 2, py + 18);
+
+        // 选项
+        panel.buttons = [];
+        for (let i = 0; i < types.length; i++) {
+            const bx = px + 10;
+            const by = py + 28 + i * 30;
+            const bw = pw - 20;
+            const bh = 24;
+
+            ctx.fillStyle = types[i].color;
+            ctx.beginPath();
+            ctx.roundRect(bx, by, bw, bh, 4);
+            ctx.fill();
+
+            ctx.fillStyle = '#fff';
+            ctx.font = '12px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(types[i].name, bx + bw / 2, by + 16);
+
+            panel.buttons.push({ x: bx, y: by, w: bw, h: bh, type: types[i] });
+        }
+    }
+}
+
+// ============================================================
+// Game 游戏主控制器
+// ============================================================
+class Game {
+    constructor(canvas) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext('2d');
+        if (!this.ctx) {
+            alert('浏览器不支持 Canvas 2D 上下文');
+            return;
+        }
+        this.renderer = new Renderer(this.ctx);
+        this.status = 'running';
+        this.pinPoints = [];
+        this.balls = [];
+        this.soldiers = [];
+        this.enemies = [];
+        this.projectiles = [];
+        this.score = 0;
+        this.breaches = 0;
+        this.lastTime = 0;
+        this.animFrameId = null;
+        this.enemySpawnTimer = 0;
+        this.enemySpawnInterval = 3000; // 每3秒生成一个敌人
+        this.selectionPanel = null;
+    }
+
+    init() {
+        this.pinPoints = [];
+        this.balls = [];
+        this.soldiers = [];
+        this.enemies = [];
+        this.projectiles = [];
+        this.score = 0;
+        this.breaches = 0;
+
+        // 生成点位（交错排列）
+        for (let row = 0; row < BoardConfig.pinRows; row++) {
+            const offsetX = (row % 2 === 1) ? BoardConfig.pinSpacingX / 2 : 0;
+            const cols = (row % 2 === 1) ? BoardConfig.pinCols - 1 : BoardConfig.pinCols;
+            for (let col = 0; col < cols; col++) {
+                const x = BoardConfig.pinStartX + col * BoardConfig.pinSpacingX + offsetX;
+                const y = BoardConfig.pinStartY + row * BoardConfig.pinSpacingY;
+                this.pinPoints.push(new PinPoint(x, y));
+            }
+        }
+
+        // 预置一些棋子在点位上
+        this._placeInitialPieces();
+    }
+
+    _placeInitialPieces() {
+        // 在第1行放一个火战士，第2行放一个冰法师，第3行放一个雷战士
+        const placements = [
+            { row: 0, col: 3, type: PIECE_TYPES.FIRE },
+            { row: 1, col: 2, type: PIECE_TYPES.ICE },
+            { row: 2, col: 4, type: PIECE_TYPES.THUNDER },
+        ];
+        for (const p of placements) {
+            const idx = this._getPinIndex(p.row, p.col);
+            if (idx >= 0 && idx < this.pinPoints.length) {
+                this.pinPoints[idx].placePiece(p.type);
+            }
+        }
+    }
+
+    _getPinIndex(row, col) {
+        let idx = 0;
+        for (let r = 0; r < row; r++) {
+            idx += (r % 2 === 1) ? BoardConfig.pinCols - 1 : BoardConfig.pinCols;
+        }
+        return idx + col;
+    }
+
+    start() {
+        this.status = 'running';
+        this.lastTime = performance.now();
+        this._loop(this.lastTime);
+    }
+
+    pause() {
+        this.status = 'paused';
+    }
+
+    resume() {
+        if (this.status === 'paused') {
+            this.status = 'running';
+            this.lastTime = performance.now();
+            this._loop(this.lastTime);
+        }
+    }
+
+    reset() {
+        this.status = 'paused';
+        if (this.animFrameId) {
+            cancelAnimationFrame(this.animFrameId);
+            this.animFrameId = null;
+        }
+        this.init();
+        this.enemySpawnTimer = 0;
+        this.render();
+        document.getElementById('score').textContent = '0';
+        document.getElementById('breaches').textContent = '0';
+        document.getElementById('soldierCount').textContent = '0';
+        document.getElementById('enemyCount').textContent = '0';
+        document.getElementById('ballCount').textContent = '0';
+    }
+
+    _loop(timestamp) {
+        if (this.status !== 'running') return;
+        const dt = Math.min(timestamp - this.lastTime, 32);
+        this.lastTime = timestamp;
+        this.update(dt);
+        this.render();
+        this.animFrameId = requestAnimationFrame((t) => this._loop(t));
+    }
+
+    update(dt) {
+        const now = performance.now();
+        const bounds = { width: BoardConfig.width, height: BoardConfig.height };
+
+        // 敌人生成
+        this.enemySpawnTimer += dt;
+        if (this.enemySpawnTimer >= this.enemySpawnInterval && this.enemies.length < 30) {
+            this.enemySpawnTimer = 0;
+            const type = ENEMY_TYPE_LIST[Math.floor(Math.random() * ENEMY_TYPE_LIST.length)];
+            this.enemies.push(new Enemy(BoardConfig.width - BoardConfig.wallThickness - 10, BoardConfig.groundY, type));
+        }
+
+        // 棋子自动发射弹球
+        for (const pin of this.pinPoints) {
+            if (!pin.isEmpty() && this.balls.length < 100) {
+                const ball = pin.chessPiece.fire(now);
+                if (ball) {
+                    this.balls.push(ball);
+                }
+            }
+        }
+
+        // 更新所有弹球
+        for (const ball of this.balls) {
+            if (!ball.alive) continue;
+            ball.update(dt);
+            Physics.checkWallCollision(ball, bounds);
+
+            for (const pin of this.pinPoints) {
+                Physics.checkPinCollision(ball, pin);
+            }
+
+            if (Physics.checkGroundCollision(ball, BoardConfig.groundY)) {
+                if (ball.type && this.soldiers.length < 50) {
+                    this.soldiers.push(new Soldier(ball.x, BoardConfig.groundY, ball.type));
+                }
+            }
+        }
+
+        // 弹球之间碰撞
+        for (let i = 0; i < this.balls.length; i++) {
+            for (let j = i + 1; j < this.balls.length; j++) {
+                Physics.checkBallCollision(this.balls[i], this.balls[j]);
+            }
+        }
+        this.balls = this.balls.filter(b => b.alive);
+
+        // 更新棋子士兵
+        for (const s of this.soldiers) {
+            s.update(dt, this.enemies, now);
+        }
+
+        // 更新敌人
+        for (const e of this.enemies) {
+            e.update(dt, this.soldiers, now);
+        }
+
+        // 战斗系统
+        Combat.checkMeleeEngagement(this.soldiers, this.enemies);
+        Combat.processMeleeCombat(this.soldiers, this.enemies, dt);
+        Combat.processRangedAttacks(this.soldiers, this.enemies, this.projectiles, now);
+
+        // 更新投射物
+        for (const p of this.projectiles) {
+            p.update(dt);
+        }
+        Combat.processProjectiles(this.projectiles, this.soldiers, this.enemies);
+
+        // 计分：统计刚死亡的敌人
+        for (const e of this.enemies) {
+            if (!e.alive && e.score > 0) {
+                this.score += e.score;
+                e.score = 0; // 防止重复计分
+            }
+        }
+
+        // 敌人突破防线
+        for (const e of this.enemies) {
+            if (e.alive && e.x <= BoardConfig.wallThickness) {
+                e.alive = false;
+                this.breaches++;
+            }
+        }
+
+        // 清理
+        const cleaned = Combat.cleanup(this.soldiers, this.enemies, this.projectiles);
+        this.soldiers = cleaned.soldiers;
+        this.enemies = cleaned.enemies;
+        this.projectiles = cleaned.projectiles;
+
+        // 更新 UI
+        document.getElementById('soldierCount').textContent = this.soldiers.length;
+        document.getElementById('enemyCount').textContent = this.enemies.length;
+        document.getElementById('ballCount').textContent = this.balls.length;
+        document.getElementById('score').textContent = this.score;
+        document.getElementById('breaches').textContent = this.breaches;
+    }
+
+    render() {
+        this.renderer.clear();
+        this.renderer.drawBoard();
+
+        for (const pin of this.pinPoints) {
+            this.renderer.drawPinPoint(pin);
+        }
+
+        for (const ball of this.balls) {
+            this.renderer.drawBall(ball);
+        }
+
+        for (const s of this.soldiers) {
+            this.renderer.drawSoldier(s);
+        }
+
+        for (const e of this.enemies) {
+            this.renderer.drawEnemy(e);
+        }
+
+        for (const p of this.projectiles) {
+            this.renderer.drawProjectile(p);
+        }
+
+        // 棋子选择面板
+        if (this.selectionPanel) {
+            this.renderer.drawSelectionPanel(this.selectionPanel);
+        }
+
+        // 暂停遮罩
+        if (this.status === 'paused') {
+            const ctx = this.ctx;
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+            ctx.fillRect(0, 0, BoardConfig.width, BoardConfig.height);
+            ctx.fillStyle = '#fff';
+            ctx.font = '32px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('已暂停', BoardConfig.width / 2, BoardConfig.height / 2);
+            ctx.font = '16px sans-serif';
+            ctx.fillStyle = '#aaa';
+            ctx.fillText('点击「继续」按钮恢复游戏', BoardConfig.width / 2, BoardConfig.height / 2 + 30);
+        }
+    }
+}
+
+// ============================================================
+// 外部配置加载
+// ============================================================
+async function loadConfigs() {
+    try {
+        const res = await fetch('piece-config.json');
+        if (res.ok) {
+            const data = await res.json();
+            PIECE_TYPES = data;
+            PIECE_TYPE_LIST = Object.values(PIECE_TYPES);
+            console.log('已加载外部棋子配置');
+        }
+    } catch (e) {
+        console.warn('加载 piece-config.json 失败，使用内置默认配置', e);
+    }
+    try {
+        const res = await fetch('enemy-config.json');
+        if (res.ok) {
+            const data = await res.json();
+            ENEMY_TYPES = data;
+            ENEMY_TYPE_LIST = Object.values(ENEMY_TYPES);
+            console.log('已加载外部敌人配置');
+        }
+    } catch (e) {
+        console.warn('加载 enemy-config.json 失败，使用内置默认配置', e);
+    }
+    try {
+        const res = await fetch('wave-config.json');
+        if (res.ok) {
+            const data = await res.json();
+            WAVE_CONFIGS = data;
+            console.log('已加载外部波次配置');
+        }
+    } catch (e) {
+        console.warn('加载 wave-config.json 失败，使用内置默认配置', e);
+    }
+}
+
+// ============================================================
+// 初始化
+// ============================================================
+const canvas = document.getElementById('gameCanvas');
+const game = new Game(canvas);
+
+loadConfigs().then(() => {
+    game.init();
+    game.start();
+});
+
+// 按钮事件
+document.getElementById('btn-pause').addEventListener('click', () => game.pause());
+document.getElementById('btn-resume').addEventListener('click', () => game.resume());
+document.getElementById('btn-reset').addEventListener('click', () => { game.reset(); game.start(); });
+
+// 点击点位放置/移除棋子（带选择面板）
+canvas.addEventListener('click', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    // 如果选择面板打开，检查是否点击了面板按钮
+    if (game.selectionPanel && game.selectionPanel.buttons) {
+        for (const btn of game.selectionPanel.buttons) {
+            if (mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h) {
+                game.selectionPanel.pin.placePiece(btn.type);
+                game.selectionPanel = null;
+                if (game.status === 'paused') game.render();
+                return;
+            }
+        }
+        // 点击面板外关闭面板
+        game.selectionPanel = null;
+        if (game.status === 'paused') game.render();
+        return;
+    }
+
+    // 检查是否点击了点位
+    for (const pin of game.pinPoints) {
+        const dx = mx - pin.x;
+        const dy = my - pin.y;
+        if (dx * dx + dy * dy <= (pin.radius + 6) * (pin.radius + 6)) {
+            if (pin.isEmpty()) {
+                // 打开选择面板
+                game.selectionPanel = { x: pin.x, y: pin.y, pin: pin, buttons: [] };
+                if (game.status === 'paused') game.render();
+            } else {
+                pin.removePiece();
+                if (game.status === 'paused') game.render();
+            }
+            return;
+        }
+    }
+});
+
+</script>
+</body>
+</html>
