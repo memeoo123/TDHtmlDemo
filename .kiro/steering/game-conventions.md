@@ -22,12 +22,17 @@ inclusion: auto
 | 整备阶段 | Shop_Phase | 波次开始前的准备阶段，可购买棋子并放置，棋子不发射弹球 |
 | 战斗阶段 | Combat_Phase | 波次的战斗阶段，棋子自动发射弹球，敌人涌入，禁止购买但允许移动棋子 |
 | 商店 | Shop | 金币管理和棋子购买系统 |
+| 棋子等级 | Piece_Level | 棋子的强化等级，范围 1-5，通过合并同类型同等级棋子升级 |
+| 升级/合并 | Upgrade/Merge | 整备阶段将两个相同类型且相同等级的棋子合并为等级+1的棋子 |
+| 等级倍率 | Level_Multiplier | 等级对士兵属性（HP/攻击/速度）的乘数系数 |
+| 技能 | Skill | 5 级棋子解锁的专属能力，在战斗阶段自动生效 |
 
 ## 架构约定
 
 - **单文件架构**：所有游戏核心逻辑在 `index.html` 的 `<script>` 标签中
 - **策略模式外置**：`combat-behaviors.js`（战斗行为）+ `combat-renderers.js`（渲染策略）通过 `<script src>` 引入
-- **配置外置**：`piece-config.json`、`enemy-config.json`、`board-config.json`、`wave-config.json`、`initial-layout.js` 通过 fetch 或 script 加载，失败时回退内置默认值
+- **配置外置**：`piece-config.json`、`enemy-config.json`、`board-config.json`、`wave-config.json`、`physics-config.json`、`balance-config.json`、`initial-layout.js` 通过 fetch 或 script 加载，失败时回退内置默认值
+- **全局配置对象**：`PhysicsConfig`（物理参数：重力、碰撞衰减、弹球/点位半径）和 `BalanceConfig`（平衡参数：近战距离、生成间隔、实体上限、投射物半径、单位尺寸）在 `index.html` 中定义内置默认值，外部 JSON 通过 `Object.assign` 覆盖
 
 ## 关键设计决策
 
@@ -36,6 +41,8 @@ inclusion: auto
 - 战斗类型通过策略注册表（`COMBAT_BEHAVIORS` / `COMBAT_RENDERERS`）分派，新增类型只需注册，不改核心代码
 - 波次分两阶段：shop（可购买放置棋子）→ combat（自动战斗，可移动已放置棋子，禁止购买）
 - 击败敌人获得金币（`enemy.score`），金币跨波次保留
+- 棋子等级 1-5，两个同类型同等级棋子可在整备阶段合并升级，等级倍率作用于士兵 HP/攻击/速度
+- 5 级棋子解锁专属技能，技能定义在 `piece-config.json` 的 `skill` 字段中
 
 ## 测试约定
 

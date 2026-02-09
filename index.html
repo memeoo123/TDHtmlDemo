@@ -98,6 +98,30 @@ if (typeof BOARD_CONFIG_EXTERNAL !== 'undefined') {
 }
 
 // ============================================================
+// 物理参数配置（内置默认值，可被外部 JSON 覆盖）
+// ============================================================
+const PhysicsConfig = {
+    gravity: 0.15,
+    pinCollisionDampening: 0.92,
+    wallCollisionDampening: 0.9,
+    ballRadius: 5,
+    pinCollisionRadius: 8
+};
+
+// ============================================================
+// 游戏平衡参数配置（内置默认值，可被外部 JSON 覆盖）
+// ============================================================
+const BalanceConfig = {
+    meleeRange: 16,
+    enemySpawnInterval: 3000,
+    maxBalls: 100,
+    maxSoldiers: 50,
+    maxEnemies: 30,
+    projectileRadius: 3,
+    unitSize: 12
+};
+
+// ============================================================
 // 棋子类型配置（内置默认值，可被外部 JSON 覆盖）
 // ============================================================
 let PIECE_TYPES = {
@@ -147,7 +171,7 @@ class PinPoint {
     constructor(x, y) {
         this.x = x;
         this.y = y;
-        this.radius = 8;
+        this.radius = PhysicsConfig.pinCollisionRadius;
         this.chessPiece = null;
     }
     isEmpty() {
@@ -165,11 +189,34 @@ class PinPoint {
 // ChessPiece 棋子类
 // ============================================================
 class ChessPiece {
-    constructor(type, pinPoint) {
+    constructor(type, pinPoint, level = 1) {
         this.type = type;
         this.pinPoint = pinPoint;
         this.lastFireTime = 0;
+        this.level = level;
     }
+
+    // 等级倍率表：1→1.0, 2→1.3, 3→1.6, 4→2.0, 5→2.5
+    static getLevelMultiplier(level) {
+        const multipliers = [1.0, 1.0, 1.3, 1.6, 2.0, 2.5];
+        return multipliers[level] || 1.0;
+    }
+
+    // 获取升级后的有效属性
+    getEffectiveStats() {
+        const mult = ChessPiece.getLevelMultiplier(this.level);
+        return {
+            soldierHP: this.type.soldierHP * mult,
+            soldierAttack: this.type.soldierAttack * mult,
+            soldierSpeed: this.type.soldierSpeed * mult
+        };
+    }
+
+    // 是否有技能（5级）
+    hasSkill() {
+        return this.level >= 5;
+    }
+
     canFire(now) {
         return (now - this.lastFireTime) >= this.type.fireInterval;
     }
@@ -181,7 +228,9 @@ class ChessPiece {
         const speed = this.type.ballSpeed;
         const vx = Math.cos(angle) * speed;
         const vy = Math.sin(angle) * speed;
-        return new Ball(this.pinPoint.x, this.pinPoint.y, vx, vy, this.type);
+        // 合并基础配置与升级后的有效属性，确保 Soldier 继承增强数值
+        const effectiveType = Object.assign({}, this.type, this.getEffectiveStats());
+        return new Ball(this.pinPoint.x, this.pinPoint.y, vx, vy, effectiveType);
     }
 }
 
@@ -195,12 +244,12 @@ class Ball {
         this.vx = vx;
         this.vy = vy;
         this.type = type;
-        this.radius = 5;
+        this.radius = PhysicsConfig.ballRadius;
         this.alive = true;
     }
     update(dt) {
         if (!this.alive) return;
-        this.vy += Physics.GRAVITY;
+        this.vy += PhysicsConfig.gravity;
         this.x += this.vx;
         this.y += this.vy;
     }
@@ -228,7 +277,7 @@ class Soldier {
         this.lastAttackTime = 0;
         this.alive = true;
         this.target = null;
-        this.size = 12;
+        this.size = BalanceConfig.unitSize;
         this.direction = 1; // 士兵向右移动
     }
     update(dt, enemies, now) {
@@ -299,7 +348,7 @@ class Enemy {
         this.lastAttackTime = 0;
         this.alive = true;
         this.target = null;
-        this.size = 12;
+        this.size = BalanceConfig.unitSize;
         this.score = enemyType.score || 10;
         this.direction = -1; // 敌人向左移动
     }
@@ -330,7 +379,7 @@ class Projectile {
         this.damage = damage;
         this.fromFriendly = fromFriendly;
         this.alive = true;
-        this.radius = 3;
+        this.radius = BalanceConfig.projectileRadius;
         const dx = targetX - x;
         const dy = targetY - y;
         const dist = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -367,7 +416,7 @@ class Projectile {
 // Combat 战斗系统
 // ============================================================
 class Combat {
-    static MELEE_RANGE = 16;
+    static get MELEE_RANGE() { return BalanceConfig.meleeRange; }
 
     static checkMeleeEngagement(soldiers, enemies) {
         for (const s of soldiers) {
@@ -504,7 +553,7 @@ class WaveManager {
         this.totalWaves = this.waveConfigs.length;
         this.phase = 'shop'; // 'shop' | 'combat'
         this.enemySpawnTimer = 0;
-        this.enemySpawnInterval = 3000;
+        this.enemySpawnInterval = BalanceConfig.enemySpawnInterval;
         this.enemySpawnQueue = []; // 待生成的敌人类型队列
         this.totalEnemiesThisWave = 0;
         this.spawnedCount = 0;
@@ -636,7 +685,7 @@ class Shop {
 // Physics 物理系统
 // ============================================================
 class Physics {
-    static GRAVITY = 0.15;
+    static get GRAVITY() { return PhysicsConfig.gravity; }
 
     static checkPinCollision(ball, pin) {
         const dx = ball.x - pin.x;
@@ -651,8 +700,8 @@ class Physics {
             const dot = ball.vx * nx + ball.vy * ny;
             ball.vx -= 2 * dot * nx;
             ball.vy -= 2 * dot * ny;
-            ball.vx *= 0.92;
-            ball.vy *= 0.92;
+            ball.vx *= PhysicsConfig.pinCollisionDampening;
+            ball.vy *= PhysicsConfig.pinCollisionDampening;
             return true;
         }
         return false;
@@ -660,17 +709,18 @@ class Physics {
 
     static checkWallCollision(ball, bounds) {
         const t = BoardConfig.wallThickness;
+        const damp = PhysicsConfig.wallCollisionDampening;
         if (ball.x - ball.radius < t) {
             ball.x = t + ball.radius;
-            ball.vx = Math.abs(ball.vx) * 0.9;
+            ball.vx = Math.abs(ball.vx) * damp;
         }
         if (ball.x + ball.radius > bounds.width - t) {
             ball.x = bounds.width - t - ball.radius;
-            ball.vx = -Math.abs(ball.vx) * 0.9;
+            ball.vx = -Math.abs(ball.vx) * damp;
         }
         if (ball.y - ball.radius < t) {
             ball.y = t + ball.radius;
-            ball.vy = Math.abs(ball.vy) * 0.9;
+            ball.vy = Math.abs(ball.vy) * damp;
         }
     }
 
@@ -1109,6 +1159,27 @@ class Game {
         return true;
     }
 
+    mergePieces(sourcePin, targetPin) {
+        if (this.waveManager.phase !== 'shop') return false;
+        if (sourcePin.isEmpty() || targetPin.isEmpty()) return false;
+
+        const sourcePiece = sourcePin.chessPiece;
+        const targetPiece = targetPin.chessPiece;
+
+        // 类型和等级必须相同
+        if (sourcePiece.type !== targetPiece.type) return false;
+        if (sourcePiece.level !== targetPiece.level) return false;
+
+        // 等级上限检查
+        if (sourcePiece.level >= 5) return false;
+
+        // 执行合并：目标点位棋子升级，源点位清空
+        targetPiece.level += 1;
+        sourcePin.chessPiece = null;
+
+        return true;
+    }
+
     start() {
         this.status = 'running';
         this.lastTime = performance.now();
@@ -1170,13 +1241,13 @@ class Game {
 
         // 敌人生成由 WaveManager 控制
         const spawnType = this.waveManager.update(dt, this.enemies);
-        if (spawnType && this.enemies.length < 30) {
+        if (spawnType && this.enemies.length < BalanceConfig.maxEnemies) {
             this.enemies.push(new Enemy(BoardConfig.width - BoardConfig.wallThickness - 10, BoardConfig.groundY, spawnType));
         }
 
         // 棋子自动发射弹球
         for (const pin of this.pinPoints) {
-            if (!pin.isEmpty() && this.balls.length < 100) {
+            if (!pin.isEmpty() && this.balls.length < BalanceConfig.maxBalls) {
                 const ball = pin.chessPiece.fire(now);
                 if (ball) {
                     this.balls.push(ball);
@@ -1195,7 +1266,7 @@ class Game {
             }
 
             if (Physics.checkGroundCollision(ball, BoardConfig.groundY)) {
-                if (ball.type && this.soldiers.length < 50) {
+                if (ball.type && this.soldiers.length < BalanceConfig.maxSoldiers) {
                     this.soldiers.push(new Soldier(ball.x, BoardConfig.groundY, ball.type));
                 }
             }
@@ -1384,6 +1455,26 @@ class Game {
 // 外部配置加载
 // ============================================================
 async function loadConfigs() {
+    try {
+        const res = await fetch('physics-config.json');
+        if (res.ok) {
+            const data = await res.json();
+            Object.assign(PhysicsConfig, data);
+            console.log('已加载外部物理参数配置');
+        }
+    } catch (e) {
+        console.warn('加载 physics-config.json 失败，使用内置默认配置', e);
+    }
+    try {
+        const res = await fetch('balance-config.json');
+        if (res.ok) {
+            const data = await res.json();
+            Object.assign(BalanceConfig, data);
+            console.log('已加载外部平衡参数配置');
+        }
+    } catch (e) {
+        console.warn('加载 balance-config.json 失败，使用内置默认配置', e);
+    }
     try {
         const res = await fetch('piece-config.json');
         if (res.ok) {

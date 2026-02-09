@@ -2,399 +2,134 @@
 
 ## 概述
 
-将策略弹球棋子游戏设计转化为可执行的编码任务。采用纯 HTML5 + Canvas + JavaScript 实现，单个 `index.html` 文件即可运行。按照从基础到复杂的顺序逐步构建，每个阶段都可独立验证。
+将策略弹球棋子游戏设计转化为可执行的编码任务。采用纯 HTML5 + Canvas + JavaScript 实现，单个 `index.html` 文件即可运行。
 
-## 任务
+## 已完成任务（摘要）
 
-- [x] 1. 搭建游戏基础框架与弹球台渲染
-  - [x] 1.1 创建 `index.html` 文件，包含 Canvas 元素、基础 CSS 样式和 JavaScript 脚本区域
-    - 设置 Canvas 尺寸为 600x700
-    - 添加暂停、继续、重置按钮的 HTML 元素
-    - _Requirements: 1.1_
-  - [x] 1.2 实现 `BoardConfig` 常量和 `Game` 类基础结构
-    - 定义弹球台配置（尺寸、点位布局参数、地面 Y 坐标等）
-    - 实现 Game 类的 constructor、init、start、pause、resume、reset 方法
-    - 实现基于 requestAnimationFrame 的游戏循环（update + render）
-    - _Requirements: 7.1, 7.2, 7.3, 7.4_
-  - [x] 1.3 实现 `PinPoint` 类和弹球台点位布局
-    - 实现 PinPoint 类（x, y, radius, chessPiece, isEmpty, placePiece, removePiece）
-    - 在 Game.init 中按网格模式生成点位数组（交错排列）
-    - _Requirements: 1.2_
-  - [x] 1.4 实现 `Renderer` 类的基础绘制方法
-    - 实现 clear、drawBoard（边界墙壁）、drawPinPoint（区分空点位和棋子点位）方法
-    - 绘制地面分隔线，区分弹球区域和战斗区域
-    - _Requirements: 1.1, 1.2, 1.4_
+- [x] 1. 搭建游戏基础框架与弹球台渲染（Canvas、BoardConfig、PinPoint、Renderer）
+- [x] 2. 实现物理系统与弹球运动（Ball、Physics、Launcher、碰撞检测）
+- [x] 3. 检查点 - 弹球物理系统
+- [x] 4. 实现棋子系统（PIECE_TYPES、ChessPiece、放置交互、自动发射）— 子任务 4.1-4.4 已完成
+- [x] 6. 实现棋子士兵与弹球落地转化（Soldier、转化逻辑、渲染、更新）— 子任务 6.1-6.4 已完成
+- [x] 7. 实现敌人生成与战斗系统（Enemy、Projectile、Combat、生成定时器）
+- [x] 8. 集成与完善（UI 控制面板、性能保护、联调优化）
+- [x] 9. 最终检查点
+- [x] 10. 将棋子和敌人的配置独立为外部文件（piece-config.json、enemy-config.json）
+- [x] 11. 将 combatType 战斗类型行为逻辑独立为策略模式（combat-behaviors.js、combat-renderers.js）
+- [x] 12. 将弹球台布局与物理参数独立为外部配置（board-config.json）
+- [x] 14. 将初始棋子布局独立为外部配置（initial-layout.js）
+- [x] 15. 实现波次系统核心逻辑（wave-config.json、WaveManager）
+- [x] 16. 实现商店与金币系统（Shop、金币经济）
+- [x] 17. 检查点 - 波次和商店核心逻辑
+- [x] 18. 实现购买摆放阶段 UI 与交互（商店面板、购买放置、波次信息）
+- [x] 19. 集成波次流程到 Game 主循环（阶段感知、波次转换、重置）
+- [x] 20. 最终检查点 - 波次商店系统
+- [x] 21. 实现兵种自定义矢量图标（melee/ranged 的 Soldier/Enemy 矢量图标）
+- [x] 22. 检查点 - 矢量图标渲染
+- [x] 23. 实现战斗阶段棋子移动功能（movePiece、交互逻辑、视觉反馈）— 子任务 23.1-23.3 已完成
 
-- [x] 2. 实现物理系统与弹球运动
-  - [x] 2.1 实现 `Ball` 类
-    - 实现 constructor（x, y, vx, vy, type）、update（含重力）、kill 方法
-    - update 中每帧对 vy 增加 GRAVITY 常量
-    - _Requirements: 2.1_
-  - [x] 2.2 实现 `Physics` 类的碰撞检测与响应
-    - 实现 applyGravity：每帧增加 vy
-    - 实现 checkPinCollision：圆-圆碰撞检测，沿连心线反弹
-    - 实现 checkWallCollision：AABB 边界检测，速度分量取反
-    - 实现 checkBallCollision：弹球之间碰撞，动量守恒反弹
-    - 实现 checkGroundCollision：Y 超过地面线时标记弹球死亡
-    - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
-  - [x] 2.3 实现 `Launcher` 类和发射器渲染
-    - 实现 Launcher 类（cooldown、canFire、fire 方法）
-    - 实现 Renderer.drawLauncher
-    - 绑定空格键和点击事件触发发射
-    - _Requirements: 6.1, 6.2, 6.3_
-  - [x] 2.4 在 Game.update 中集成物理系统
-    - 遍历所有弹球执行重力、碰撞钉碰撞、棋子点位碰撞、墙壁碰撞、弹球间碰撞、地面检测
-    - 实现 Renderer.drawBall 绘制弹球
-    - 清理死亡弹球
-    - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 5.3_
-  - [ ]* 2.5 编写物理系统属性测试
-    - **Property 1: 重力不变量**
-    - **Property 2: 碰撞后远离**
-    - **Property 3: 墙壁反弹后在边界内**
-    - **Property 5: 所有点位均产生碰撞**
-    - **Validates: Requirements 2.1, 2.2, 2.3, 2.5, 5.3**
+## 未完成的可选任务（属性测试）
 
-- [x] 3. 检查点 - 确保弹球物理系统正常工作
+- [ ]* 2.5 编写物理系统属性测试（Property 1-3, 5）
+- [ ]* 4.5 编写棋子系统属性测试（Property 6-11）
+- [ ]* 6.5 编写棋子士兵属性测试（Property 4, 12-14）
+- [ ]* 7.6 编写战斗系统属性测试（Property 15-20）
+- [ ]* 15.4 编写波次系统属性测试（Property 21-22）
+- [ ]* 16.3 编写商店与金币属性测试（Property 23-24, 27-28）
+- [ ]* 18.4 编写放置与阶段门控属性测试（Property 25-26）
+- [ ]* 19.5 编写波次转换属性测试（Property 29）
+- [ ]* 21.5 编写渲染策略属性测试（Property 30-31）
+
+## 未完成的必需任务
+
+
+- [x] 13. 将物理与战斗数值参数独立为外部配置
+  - [x] 13.1 创建 `physics-config.json` 物理参数配置文件
+    - 提取 `Physics.GRAVITY`（重力加速度，当前 0.15）
+    - 提取碰撞衰减系数（点位碰撞 0.92、墙壁碰撞 0.9）
+    - 提取弹球半径（当前 5）、点位碰撞半径（当前 8）
+  - [x] 13.2 创建 `balance-config.json` 游戏平衡参数配置文件
+    - 提取 `Combat.MELEE_RANGE`（近战交战距离，当前 16）
+    - 提取 `enemySpawnInterval`（敌人生成间隔，当前 3000ms）
+    - 提取实体数量上限：弹球（100）、士兵（50）、敌人（30）
+    - 提取投射物半径（当前 3）、单位尺寸（当前 12）
+  - [x] 13.3 修改 `index.html` 加载物理与平衡参数
+    - 在 `loadConfigs` 中增加两个 JSON 的 fetch 加载
+    - 用加载的数据覆盖 `Physics.GRAVITY`、碰撞衰减系数、`Combat.MELEE_RANGE`、Game 中的各项上限参数
+    - 加载失败时保留内置默认值
+
+
+
+
+
+- [x] 25. 实现棋子等级系统与升级合并核心逻辑
+  - [x] 25.1 扩展 `ChessPiece` 类，新增 `level` 属性和等级相关方法
+    - 在 constructor 中新增 `level` 参数（默认值 1）
+    - 实现静态方法 `getLevelMultiplier(level)`，返回等级倍率（1→1.0, 2→1.3, 3→1.6, 4→2.0, 5→2.5）
+    - 实现 `getEffectiveStats()` 方法，返回 `{ soldierHP, soldierAttack, soldierSpeed }` 乘以等级倍率后的值
+    - 实现 `hasSkill()` 方法（level >= 5 返回 true）
+    - _Requirements: 15.3, 15.4_
+  - [x] 25.2 修改 `ChessPiece.fire()` 方法，使弹球携带升级后的有效属性
+    - fire() 生成 Ball 时，将 type 替换为包含有效属性的对象（合并 type 基础配置与 getEffectiveStats() 的结果）
+    - 确保 Soldier 构造时直接使用升级后的 soldierHP/soldierAttack/soldierSpeed
+    - _Requirements: 15.5_
+  - [x] 25.3 在 `Game` 类中实现 `mergePieces(sourcePin, targetPin)` 方法
+    - 验证当前阶段为 shop、两个点位均有棋子、类型相同（`===`）、等级相同、源棋子等级 < 5
+    - 合并成功：目标棋子 level += 1，源点位清空（chessPiece = null）
+    - 合并失败：返回 false，不改变任何状态
+    - _Requirements: 15.1, 15.2, 15.3, 15.7_
+  - [ ]* 25.4 编写升级合并核心属性测试
+    - **Property 35: 同类型同等级棋子合并升级**
+    - **Property 36: 类型或等级不同时拒绝合并**
+    - **Property 37: 棋子等级始终在有效范围内**
+    - **Validates: Requirements 15.1, 15.2, 15.3**
+
+- [ ] 26. 实现升级属性传递与 5 级技能
+  - [ ] 26.1 在 `piece-config.json` 中为每种棋子类型新增 `skill` 字段
+    - FIRE: `{ "name": "烈焰光环", "type": "aura", "damagePerSecond": 0.5, "radius": 40 }`
+    - ICE: `{ "name": "冰霜减速", "type": "slow", "slowFactor": 0.5, "duration": 2000 }`
+    - THUNDER: `{ "name": "连锁闪电", "type": "chain", "chainCount": 2, "chainDamageRatio": 0.5, "chainRange": 60 }`
+    - _Requirements: 15.6_
+  - [ ] 26.2 在 `combat-behaviors.js` 中集成 5 级技能效果
+    - melee 策略的 move/攻击逻辑中检查 `soldier.skill`，若为 aura 类型则对范围内敌人施加持续伤害
+    - ranged 策略的攻击逻辑中检查 `soldier.skill`，若为 slow 类型则减缓被击中敌人的速度
+    - melee 策略中检查 chain 类型技能，攻击时闪电跳跃到附近敌人
+    - _Requirements: 15.6_
+  - [ ] 26.3 修改 `Soldier` 构造函数，支持技能属性传递
+    - 从 Ball 的 type 中读取 skill 字段（仅 5 级棋子的弹球携带 skill）
+    - 将 skill 存储在 Soldier 实例上供战斗行为策略使用
+    - _Requirements: 15.5, 15.6_
+  - [ ]* 26.4 编写属性传递与技能属性测试
+    - **Property 38: 升级属性倍率与士兵继承一致性**
+    - **Property 39: 5 级棋子具有技能**
+    - **Validates: Requirements 15.4, 15.5, 15.6**
+
+- [ ] 27. 检查点 - 确保升级核心逻辑和属性传递正常
   - 确保所有测试通过，如有问题请询问用户。
 
-- [ ] 4. 实现棋子系统
-  - [x] 4.1 定义 `PIECE_TYPES` 棋子类型配置
-    - 定义三种棋子类型（火战士/冰法师/雷战士），包含颜色、发射间隔、弹球速度、战斗类型、士兵属性等
-    - _Requirements: 4.1, 4.2, 4.3_
-  - [x] 4.2 实现 `ChessPiece` 类
-    - 实现 constructor（type, pinPoint）、canFire（基于发射间隔）、fire（生成弹球）方法
-    - fire 方法生成的弹球继承棋子类型，从点位坐标出发，随机方向
-    - _Requirements: 4.4, 5.1, 5.2_
-  - [x] 4.3 实现棋子放置交互
-    - 实现 InputHandler 的点击检测（判断点击目标是点位、发射器还是 UI 按钮）
-    - 点击空点位显示棋子选择面板（Renderer.drawSelectionPanel）
-    - 选择类型后调用 PinPoint.placePiece
-    - 点击已放置棋子的点位显示移除选项，确认后调用 PinPoint.removePiece
-    - _Requirements: 3.1, 3.2, 3.3, 3.4_
-  - [x] 4.4 在 Game.update 中集成棋子自动发射
-    - 遍历所有有棋子的点位，检查 canFire，触发 fire 并将弹球加入列表
-    - _Requirements: 5.1, 5.2_
-  - [ ]* 4.5 编写棋子系统属性测试
-    - **Property 6: 棋子放置与移除往返**
-    - **Property 7: 类型传递链**
-    - **Property 8: 发射间隔控制**
-    - **Property 9: 弹球从棋子位置出发**
-    - **Property 10: 发射器向上发射**
-    - **Property 11: 发射器冷却机制**
-    - **Validates: Requirements 3.2, 3.4, 4.4, 5.1, 5.2, 6.2, 6.3, 8.2**
+- [ ] 28. 实现整备阶段升级交互与视觉反馈
+  - [ ] 28.1 在整备阶段的 canvas click 事件中新增合并交互逻辑
+    - 整备阶段选中已放置棋子后，点击另一个已放置棋子的点位时：
+      - 若同类型同等级 → 调用 `game.mergePieces()` 执行合并
+      - 若不同类型或不同等级 → 切换选择到目标棋子（或提示无法合并）
+    - 选中棋子后点击空点位 → 执行移动（复用现有逻辑）
+    - _Requirements: 15.1, 15.2_
+  - [ ] 28.2 在 `Renderer.drawPinPoint` 中显示棋子等级标识
+    - 在棋子点位上方绘制等级数字（"Lv.1" ~ "Lv.5"）
+    - 等级越高描边/光环越亮（通过 strokeStyle alpha 或线宽区分）
+    - 5 级棋子额外绘制技能图标或特殊光效
+    - _Requirements: 15.8_
+  - [ ]* 28.3 编写阶段门控属性测试
+    - **Property 40: 战斗阶段禁止升级操作**
+    - **Property 41: 移除升级棋子退还基础价格**
+    - **Validates: Requirements 15.7, 15.9**
 
-- [ ] 5. 检查点 - 确保棋子放置和弹球发射正常工作
+- [ ] 29. 最终检查点 - 确保棋子升级系统完整运行
   - 确保所有测试通过，如有问题请询问用户。
-
-- [ ] 6. 实现棋子士兵与弹球落地转化
-  - [x] 6.1 实现 `Soldier` 类
-    - 实现 constructor（x, groundY, type），根据 type.combatType 设置近战/远程属性
-    - 实现 update 方法：近战型无目标时向右移动，远程型在范围内停下
-    - 实现 takeDamage、findTarget 方法
-    - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5_
-  - [x] 6.2 实现弹球落地转化逻辑
-    - 在 Physics.checkGroundCollision 中，弹球到达地面时创建 Soldier 实例
-    - 士兵 x 坐标等于弹球落地时的 x 坐标，类型继承自弹球
-    - _Requirements: 2.4, 8.1, 8.2_
-  - [x] 6.3 实现 Renderer.drawSoldier
-    - 绘制棋子士兵（区分近战/远程视觉样式），显示生命值条
-    - _Requirements: 8.7_
-  - [x] 6.4 在 Game.update 中集成棋子士兵更新
-    - 遍历所有士兵执行 update，清理超出右边界或死亡的士兵
-    - _Requirements: 8.3, 8.4, 8.6_
-  - [ ]* 6.5 编写棋子士兵属性测试
-    - **Property 4: 弹球落地转化棋子士兵**
-    - **Property 12: 近战型棋子士兵向右移动**
-    - **Property 13: 远程型棋子士兵在范围内停止移动**
-    - **Property 14: 棋子士兵超出边界移除**
-    - **Validates: Requirements 2.4, 8.1, 8.4, 8.5, 8.6**
-
-- [x] 7. 实现敌人生成与战斗系统
-  - [x] 7.1 定义 `ENEMY_TYPES` 敌人类型配置并实现 `Enemy` 类
-    - 定义至少两种敌人类型（步兵/弓箭手），包含战斗类型、生命值、攻击力、速度等
-    - 实现 Enemy 类（constructor、update、takeDamage、findTarget）
-    - 近战型无目标时向左移动，远程型在范围内停下
-    - _Requirements: 9.1, 9.2, 9.3, 9.4_
-  - [x] 7.2 实现 `Projectile` 类
-    - 实现投射物的创建、移动、命中检测逻辑
-    - 区分友方和敌方投射物
-    - _Requirements: 9.6_
-  - [x] 7.3 实现 `Combat` 类
-    - 实现 checkMeleeEngagement：检测近战单位接触
-    - 实现 processRangedAttacks：远程单位在范围内生成投射物
-    - 实现 processProjectiles：投射物命中检测和伤害处理
-    - 实现 processMeleeCombat：近战伤害计算
-    - 实现 cleanup：清理死亡单位和失效投射物
-    - _Requirements: 9.5, 9.6, 9.7, 9.8_
-  - [x] 7.4 实现敌人生成定时器和 Renderer 绘制
-    - 在 Game.update 中按固定间隔从右侧生成随机类型敌人
-    - 实现 Renderer.drawEnemy（区分近战/远程）和 Renderer.drawProjectile
-    - _Requirements: 9.1, 9.10_
-  - [x] 7.5 在 Game.update 中集成战斗系统
-    - 调用 Combat 的各方法处理战斗逻辑
-    - 敌人到达左边界时增加 breaches 计数
-    - 清理死亡实体
-    - _Requirements: 9.5, 9.6, 9.7, 9.8, 9.9_
-  - [ ]* 7.6 编写战斗系统属性测试
-    - **Property 15: 敌人向左移动**
-    - **Property 16: 远程型敌人在范围内停止移动**
-    - **Property 17: 近战战斗造成伤害**
-    - **Property 18: 投射物命中造成伤害**
-    - **Property 19: 生命值归零移除**
-    - **Property 20: 敌人突破防线**
-    - **Validates: Requirements 9.3, 9.4, 9.5, 9.6, 9.7, 9.8, 9.9**
-
-- [x] 8. 集成与完善
-  - [x] 8.1 实现 UI 控制面板
-    - 绑定暂停/继续/重置按钮事件
-    - 显示分数（击败敌人数）和防线突破次数
-    - 暂停时冻结所有更新逻辑
-    - _Requirements: 7.2, 7.3, 7.4_
-  - [x] 8.2 实现性能保护和边界处理
-    - 设置弹球、士兵、敌人、投射物的最大数量上限
-    - 弹球位置超出边界时强制修正
-    - 每帧结束清理所有死亡实体
-    - _Requirements: 错误处理_
-  - [x] 8.3 整体联调与视觉优化
-    - 确保所有组件正确连接：棋子发射 → 弹球碰撞 → 落地转化 → 士兵战斗
-    - 调整颜色、大小、速度等参数使游戏体验流畅
-    - 确保单文件可直接在浏览器中打开运行
-    - _Requirements: 全部_
-
-- [x] 9. 最终检查点 - 确保所有功能正常
-  - 确保所有测试通过，如有问题请询问用户。
+  - 验证完整流程：购买两个同类型棋子 → 放置 → 拖拽合并升级 → 升级后属性增强 → 士兵继承增强属性 → 5 级解锁技能
 
 ## 备注
 
 - 标记 `*` 的任务为可选任务，可跳过以加快 MVP 进度
 - 每个任务引用了具体的需求编号以便追溯
 - 检查点用于阶段性验证，确保增量开发的正确性
-- 属性测试验证通用正确性属性，单元测试验证具体示例和边界情况
-
-- [x] 10. 将棋子和敌人的配置独立为外部文件
-  - [x] 10.1 创建 `piece-config.json` 棋子配置文件
-    - 将 `PIECE_TYPES` 的所有棋子类型数据提取到 JSON 文件中
-    - 包含 name、color、fireInterval、ballSpeed、combatType、soldierHP、soldierAttack、soldierSpeed 等字段
-    - 远程型额外包含 attackRange、projectileSpeed、attackInterval
-  - [x] 10.2 创建 `enemy-config.json` 敌人配置文件
-    - 将 `ENEMY_TYPES` 的所有敌人类型数据提取到 JSON 文件中
-    - 包含 name、color、combatType、hp、attack、speed、score 等字段
-    - 远程型额外包含 attackRange、projectileSpeed、attackInterval
-  - [x] 10.3 修改 `index.html` 通过 fetch 加载外部配置
-    - 游戏启动前先加载两个 JSON 配置文件
-    - 用加载的数据替换原有的硬编码 `PIECE_TYPES` 和 `ENEMY_TYPES`
-    - 加载失败时回退到内置默认配置
-  - [x] 10.4 验证配置热更新流程
-    - 确保修改 JSON 文件后刷新页面即可生效
-    - 确保新增棋子/敌人类型只需编辑 JSON 文件，无需改动代码
-
-- [x] 11. 将 combatType 战斗类型的行为逻辑独立为可配置的策略模式
-  - [x] 11.1 创建 `combat-behaviors.js` 战斗行为策略文件
-    - 定义 `COMBAT_BEHAVIORS` 注册表对象，以 combatType 字符串为 key
-    - 每种战斗类型包含以下策略函数：`move(unit, dt)`（移动逻辑）、`findTarget(unit, targets)`（目标搜索逻辑）、`canEngage(unit, target)`（是否可交战判定）
-    - 实现 `melee` 策略：无目标时持续移动、接触距离内交战、无射程限制的目标搜索
-    - 实现 `ranged` 策略：范围内有目标时停止移动、按间隔发射投射物、仅搜索攻击范围内的目标
-  - [x] 11.2 创建 `combat-renderers.js` 战斗类型渲染策略文件
-    - 定义 `COMBAT_RENDERERS` 注册表对象，以 combatType 字符串为 key
-    - 每种战斗类型包含：`drawSoldier(ctx, soldier)`（士兵绘制）、`drawEnemy(ctx, enemy)`（敌人绘制）
-    - 将 Renderer 中按 combatType 分支的绘制逻辑迁移到对应策略中
-  - [x] 11.3 重构 `Soldier` 和 `Enemy` 类使用策略模式
-    - `update` 方法中通过 `COMBAT_BEHAVIORS[this.combatType]` 查找策略并调用，替代 if/else 分支
-    - `findTarget` 方法中通过策略的 `canEngage` 判定目标是否在有效范围内
-    - 保留 combatType 字段用于策略查找，移除类内部的硬编码行为分支
-  - [x] 11.4 重构 `Combat` 类使用策略模式
-    - `checkMeleeEngagement` 和 `processRangedAttacks` 改为遍历所有单位，通过策略判定交战方式
-    - 移除 `combatType === 'melee'` / `combatType === 'ranged'` 的硬编码判断
-  - [x] 11.5 重构 `Renderer` 使用渲染策略
-    - `drawSoldier` 和 `drawEnemy` 通过 `COMBAT_RENDERERS[unit.combatType]` 查找绘制策略
-    - 移除 Renderer 内部按 combatType 分支的绘制逻辑
-  - [x] 11.6 在 `index.html` 中引入策略文件并验证
-    - 通过 `<script src>` 引入 `combat-behaviors.js` 和 `combat-renderers.js`
-    - 确保现有 melee/ranged 行为与重构前完全一致
-    - 验证新增战斗类型只需在策略文件中注册，无需修改核心类代码
-
-- [x] 12. 将弹球台布局与物理参数独立为外部配置
-  - [x] 12.1 创建 `board-config.json` 弹球台配置文件
-    - 提取 `BoardConfig` 的所有字段：width、height、pinballAreaHeight、groundAreaHeight、groundY、pinRows、pinCols、pinSpacingX、pinSpacingY、pinStartX、pinStartY、wallThickness
-    - Canvas 元素的 width/height 属性也根据配置动态设置
-  - [x] 12.2 修改 `index.html` 加载弹球台配置
-    - 在 `loadConfigs` 中增加 `board-config.json` 的 fetch 加载
-    - 用加载的数据覆盖 `BoardConfig` 对象，加载失败时保留内置默认值
-    - 加载后动态设置 Canvas 元素的 width/height
-
-- [ ] 13. 将物理与战斗数值参数独立为外部配置
-  - [ ] 13.1 创建 `physics-config.json` 物理参数配置文件
-    - 提取 `Physics.GRAVITY`（重力加速度，当前 0.15）
-    - 提取碰撞衰减系数（点位碰撞 0.92、墙壁碰撞 0.9）
-    - 提取弹球半径（当前 5）、点位碰撞半径（当前 8）
-  - [ ] 13.2 创建 `balance-config.json` 游戏平衡参数配置文件
-    - 提取 `Combat.MELEE_RANGE`（近战交战距离，当前 16）
-    - 提取 `enemySpawnInterval`（敌人生成间隔，当前 3000ms）
-    - 提取实体数量上限：弹球（100）、士兵（50）、敌人（30）
-    - 提取投射物半径（当前 3）、单位尺寸（当前 12）
-  - [ ] 13.3 修改 `index.html` 加载物理与平衡参数
-    - 在 `loadConfigs` 中增加两个 JSON 的 fetch 加载
-    - 用加载的数据覆盖 `Physics.GRAVITY`、碰撞衰减系数、`Combat.MELEE_RANGE`、Game 中的各项上限参数
-    - 加载失败时保留内置默认值
-
-- [x] 14. 将初始棋子布局独立为外部配置
-  - [x] 14.1 创建 `initial-layout.json` 初始布局配置文件
-    - 定义初始棋子放置列表，每项包含 row、col、pieceType（对应 PIECE_TYPES 的 key）
-    - 当前默认布局：`[{row:0, col:3, type:"FIRE"}, {row:1, col:2, type:"ICE"}, {row:2, col:4, type:"THUNDER"}]`
-  - [x] 14.2 修改 `_placeInitialPieces` 读取外部布局配置
-    - 在 `loadConfigs` 中增加 `initial-layout.json` 的 fetch 加载
-    - `_placeInitialPieces` 遍历配置数组，通过 pieceType key 查找 `PIECE_TYPES` 中的类型对象
-    - 加载失败时使用内置默认布局
-
-
-- [x] 15. 实现波次系统核心逻辑
-  - [x] 15.1 创建 `wave-config.json` 波次配置文件
-    - 定义至少 3 个波次，每个波次包含 enemies 数组（type + count）和 spawnInterval
-    - 波次难度递增：敌人数量增加、生成间隔缩短
-    - _Requirements: 10.1, 10.4_
-  - [x] 15.2 在 `piece-config.json` 中为每种棋子类型添加 `price` 字段
-    - 火战士 price: 10，冰法师 price: 15，雷战士 price: 12
-    - _Requirements: 12.4_
-  - [x] 15.3 实现 `WaveManager` 类
-    - 实现 constructor（加载波次配置）、currentWave、totalWaves、phase 属性
-    - 实现 startShopPhase()：设置 phase 为 'shop'，清理战场残留弹球/士兵/投射物
-    - 实现 startCombatPhase()：设置 phase 为 'combat'，初始化当前波次的敌人生成队列
-    - 实现 update(dt, enemies)：战斗阶段按 spawnInterval 生成敌人，检测波次完成
-    - 实现 isWaveComplete()：所有敌人已生成且场上无存活敌人
-    - 实现 isGameComplete()：最后一波且波次完成
-    - _Requirements: 10.1, 10.3, 10.4, 10.5, 10.6_
-  - [ ]* 15.4 编写波次系统属性测试
-    - **Property 21: 阶段切换正确性**
-    - **Property 22: 战斗阶段敌人生成符合波次配置**
-    - **Validates: Requirements 10.3, 10.4, 10.5**
-
-- [x] 16. 实现商店与金币系统
-  - [x] 16.1 实现 `Shop` 类
-    - 实现 constructor（初始金币数量）、gold、selectedPiece 属性
-    - 实现 getGold()、addGold(amount)、canAfford(pieceType)
-    - 实现 buyPiece(pieceType)：金币充足时扣除金币并设置 selectedPiece，不足时返回 false
-    - 实现 refundPiece(pieceType)：返还棋子价格到金币
-    - 实现 clearSelection()：清除待放置选择
-    - _Requirements: 11.2, 11.4, 11.5, 12.1_
-  - [x] 16.2 修改 Game 类集成金币经济
-    - 击败敌人时调用 shop.addGold(enemy.score) 增加金币
-    - 在 UI 信息栏中显示当前金币数量
-    - _Requirements: 12.2, 12.3_
-  - [ ]* 16.3 编写商店与金币属性测试
-    - **Property 23: 购买成功当且仅当金币充足**
-    - **Property 24: 购买与退还金币往返**
-    - **Property 27: 击败敌人获得金币**
-    - **Property 28: 所有棋子类型具有正价格**
-    - **Validates: Requirements 11.2, 11.4, 11.5, 12.2, 12.4**
-
-- [x] 17. 检查点 - 确保波次和商店核心逻辑正常
-  - 确保所有测试通过，如有问题请询问用户。
-
-- [x] 18. 实现购买摆放阶段 UI 与交互
-  - [x] 18.1 实现商店面板渲染
-    - 在 Renderer 中新增 drawShopPanel(shop) 方法
-    - 在弹球台右侧或底部显示商店面板：棋子类型列表、价格、当前金币
-    - 金币不足的棋子类型显示为灰色/禁用状态
-    - _Requirements: 11.1, 11.4_
-  - [x] 18.2 实现购买摆放阶段的交互逻辑
-    - 点击商店中的棋子类型触发 shop.buyPiece()，成功后进入待放置状态
-    - 待放置状态下点击空点位放置棋子，调用 shop.clearSelection()
-    - 点击已放置棋子的点位移除棋子并调用 shop.refundPiece() 退还金币
-    - 添加"开始战斗"按钮，点击后调用 waveManager.startCombatPhase()
-    - _Requirements: 11.2, 11.3, 11.5, 10.3_
-  - [x] 18.3 实现波次信息 UI 显示
-    - 在界面顶部显示当前波次编号/总波次数和当前阶段名称
-    - 战斗阶段显示剩余敌人数量
-    - _Requirements: 10.7_
-  - [ ]* 18.4 编写放置与阶段门控属性测试
-    - **Property 25: 购买后放置棋子**
-    - **Property 26: 战斗阶段禁止商店操作**
-    - **Validates: Requirements 11.3, 11.6**
-
-- [x] 19. 集成波次流程到 Game 主循环
-  - [x] 19.1 重构 Game.update 支持阶段感知
-    - 购买摆放阶段：跳过物理更新、棋子发射、敌人生成和战斗逻辑，仅渲染静态画面和商店
-    - 战斗阶段：执行原有的完整更新逻辑，但敌人生成改为由 WaveManager 控制
-    - 移除原有的 enemySpawnTimer 和固定间隔敌人生成逻辑
-    - _Requirements: 10.4, 11.6_
-  - [x] 19.2 实现波次完成与转换逻辑
-    - 每帧检测 waveManager.isWaveComplete()，完成时清理战场并进入下一波 shop 阶段
-    - 检测 waveManager.isGameComplete()，完成时显示胜利画面
-    - 波次转换时保留金币余额（shop.gold 不变）
-    - _Requirements: 10.5, 10.6, 12.5_
-  - [x] 19.3 修改 Game.reset 支持波次重置
-    - 重置时恢复到第一波购买摆放阶段，恢复初始金币，清除所有棋子
-    - _Requirements: 7.4_
-  - [x] 19.4 在 `index.html` 中加载 wave-config.json 并初始化波次系统
-    - 在 loadConfigs 中增加 wave-config.json 的 fetch 加载
-    - 加载失败时使用内置默认波次配置
-    - 初始化 WaveManager 和 Shop 实例
-    - _Requirements: 10.1, 12.1_
-  - [ ]* 19.5 编写波次转换属性测试
-    - **Property 29: 波次转换保留金币**
-    - **Validates: Requirements 12.5**
-
-- [x] 20. 最终检查点 - 确保波次商店系统完整运行
-  - 确保所有测试通过，如有问题请询问用户。
-  - 验证完整流程：游戏开始 → 商店购买棋子 → 放置 → 开始战斗 → 击败敌人获金 → 下一波 → 最终胜利
-
-- [x] 21. 实现兵种自定义矢量图标
-  - [x] 21.1 重构 `combat-renderers.js` 中 `melee.drawSoldier` 为剑盾战士矢量图标
-    - 替换当前的方块绘制为剑盾战士轮廓：圆头 + 梯形躯干 + 右手持剑（细长三角形）+ 左手持盾（小矩形/圆弧）
-    - 使用 `soldier.type.color` 作为 `fillStyle` 主填充色
-    - 描边使用 `'#fff'`，线宽 1px
-    - 图标限制在 `size × size` 包围盒内，朝右（面向敌人方向）
-    - _Requirements: 13.1, 13.3, 13.4, 13.5_
-  - [x] 21.2 重构 `combat-renderers.js` 中 `melee.drawEnemy` 为持斧蛮兵矢量图标
-    - 替换当前的菱形绘制为持斧蛮兵轮廓：圆头 + 宽肩躯干 + 双手举起战斧（弧形斧刃）
-    - 使用 `enemy.enemyType.color` 作为 `fillStyle` 主填充色
-    - 描边使用 `'#fff'`，线宽 1px
-    - 图标朝左（面向士兵方向）
-    - _Requirements: 13.2, 13.3, 13.4, 13.5_
-  - [x] 21.3 重构 `combat-renderers.js` 中 `ranged.drawSoldier` 为法杖法师矢量图标
-    - 替换当前的三角形绘制为法杖法师轮廓：圆头 + 长袍轮廓（三角形裙摆）+ 右手持法杖（细线 + 顶端小圆光球）
-    - 使用 `soldier.type.color` 作为 `fillStyle` 主填充色
-    - 描边使用 `'#fff'`，线宽 1px
-    - 图标朝右
-    - _Requirements: 13.1, 13.3, 13.4, 13.5_
-  - [x] 21.4 重构 `combat-renderers.js` 中 `ranged.drawEnemy` 为持弓射手矢量图标
-    - 替换当前的倒三角形绘制为持弓射手轮廓：圆头 + 轻甲躯干 + 持弓姿态（弧线弓身 + 弦线 + 箭矢）
-    - 使用 `enemy.enemyType.color` 作为 `fillStyle` 主填充色
-    - 描边使用 `'#fff'`，线宽 1px
-    - 图标朝左
-    - _Requirements: 13.2, 13.3, 13.4, 13.5_
-  - [ ]* 21.5 编写渲染策略属性测试
-    - **Property 30: 渲染策略注册表完整性**
-    - **Property 31: 矢量图标使用配置颜色**
-    - **Validates: Requirements 13.1, 13.2, 13.4, 13.5**
-
-- [x] 22. 检查点 - 确保矢量图标渲染正常
-  - 确保所有测试通过，如有问题请询问用户。
-  - 在浏览器中验证每种兵种的矢量图标是否正确显示，颜色是否与配置一致
-
-- [x] 23. 实现战斗阶段棋子移动功能
-  - [x] 23.1 在 `Game` 类中新增 `movePiece` 方法和 `movingPiece` 状态
-    - 新增 `this.movingPiece = null` 属性（在 constructor 和 init 中初始化）
-    - 实现 `movePiece(sourcePin, targetPin)` 方法：验证源点位有棋子且目标点位为空，将棋子从源点位转移到目标点位，更新棋子的 `pinPoint` 引用，保留 `lastFireTime` 不变
-    - 移动失败时返回 false，成功时返回 true
-    - _Requirements: 14.5_
-  - [x] 23.2 在战斗阶段的 canvas click 事件中新增棋子移动交互逻辑
-    - 战斗阶段（`phase === 'combat'`）点击已放置棋子的点位时，设置 `game.movingPiece` 为该点位
-    - 已选中棋子后点击空点位，调用 `game.movePiece` 执行移动并清除选中状态
-    - 已选中棋子后再次点击同一点位，取消选择
-    - 已选中棋子后点击另一个有棋子的点位，切换选择目标
-    - 点击空白区域取消选择
-    - _Requirements: 14.5_
-  - [x] 23.3 实现选中棋子的视觉反馈
-    - 在 `Renderer.drawPinPoint` 中检测该点位是否为 `game.movingPiece`，是则绘制高亮边框（白色加粗描边或闪烁效果）
-    - 战斗阶段选中棋子后，鼠标悬停在空点位上时显示半透明棋子预览
-    - 在 `Game.reset` 中清除 `movingPiece` 状态
-    - _Requirements: 14.5_
-  - [ ] 23.4 编写战斗阶段棋子移动属性测试
-    - **Property 33: 战斗阶段棋子移动保持不变量**
-    - **Property 34: 战斗阶段棋子移动到非空点位被拒绝**
-    - **Validates: Requirements 14.5**
-
-- [ ] 24. 检查点 - 确保战斗阶段棋子移动功能正常
-  - 确保所有测试通过，如有问题请询问用户。
-  - 验证战斗阶段可以选中棋子并移动到空点位，移动后棋子继续正常发射弹球
