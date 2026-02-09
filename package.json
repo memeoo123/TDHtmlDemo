@@ -1,0 +1,12 @@
+{
+  "name": "pinball-chess-game-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest --run"
+  },
+  "devDependencies": {
+    "vitest": "^1.6.0",
+    "fast-check": "^3.15.0"
+  }
+}

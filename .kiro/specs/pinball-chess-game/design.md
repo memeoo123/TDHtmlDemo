@@ -312,7 +312,7 @@ class Launcher {
 
 ### 11. Renderer（渲染器）
 
-负责所有 Canvas 绘制操作。
+负责所有 Canvas 绘制操作。士兵和敌人的绘制委托给 `COMBAT_RENDERERS` 策略注册表。
 
 ```javascript
 class Renderer {
@@ -321,8 +321,8 @@ class Renderer {
     drawBoard(bounds)          // 绘制弹球台边界
     drawPinPoint(pin)          // 绘制点位（碰撞钉或棋子）
     drawBall(ball)             // 绘制弹球
-    drawSoldier(soldier)       // 绘制棋子士兵（区分近战/远程）
-    drawEnemy(enemy)           // 绘制敌人（区分近战/远程）
+    drawSoldier(soldier)       // 委托给 COMBAT_RENDERERS[soldier.combatType].drawSoldier
+    drawEnemy(enemy)           // 委托给 COMBAT_RENDERERS[enemy.combatType].drawEnemy
     drawProjectile(proj)       // 绘制投射物
     drawLauncher(launcher)     // 绘制发射器
     drawUI(gameState)          // 绘制 UI（暂停/继续/重置按钮）
@@ -331,7 +331,114 @@ class Renderer {
 }
 ```
 
-### 12. InputHandler（输入处理）
+`drawSoldier` 和 `drawEnemy` 的实现通过查找 `COMBAT_RENDERERS` 注册表来分派：
+
+```javascript
+drawSoldier(soldier) {
+    const renderer = COMBAT_RENDERERS[soldier.combatType];
+    if (renderer) renderer.drawSoldier(this.ctx, soldier);
+}
+
+drawEnemy(enemy) {
+    const renderer = COMBAT_RENDERERS[enemy.combatType];
+    if (renderer) renderer.drawEnemy(this.ctx, enemy);
+}
+```
+
+### 12. CombatRenderers（战斗类型渲染策略）
+
+基于策略模式的渲染注册表，每种 `combatType` 对应一组独立的矢量图标绘制函数。文件：`combat-renderers.js`。
+
+```javascript
+// combat-renderers.js
+const COMBAT_RENDERERS = {
+    melee: {
+        /**
+         * 近战士兵：剑盾战士轮廓
+         * - 火战士(FIRE)和雷战士(THUNDER)共用近战型图标
+         * - 身体轮廓 + 右手持剑 + 左手持盾
+         * - 使用 soldier.type.color 作为主填充色
+         */
+        drawSoldier(ctx, soldier) { /* ... */ },
+
+        /**
+         * 近战敌人（步兵 GRUNT）：持斧蛮兵轮廓
+         * - 身体轮廓 + 双手持斧
+         * - 使用 enemy.enemyType.color 作为主填充色
+         */
+        drawEnemy(ctx, enemy) { /* ... */ }
+    },
+
+    ranged: {
+        /**
+         * 远程士兵（冰法师 ICE）：法杖法师轮廓
+         * - 身体轮廓 + 右手持法杖 + 法杖顶端光球
+         * - 使用 soldier.type.color 作为主填充色
+         */
+        drawSoldier(ctx, soldier) { /* ... */ },
+
+        /**
+         * 远程敌人（弓箭手 ARCHER）：持弓射手轮廓
+         * - 身体轮廓 + 双手持弓 + 箭矢
+         * - 使用 enemy.enemyType.color 作为主填充色
+         */
+        drawEnemy(ctx, enemy) { /* ... */ }
+    }
+};
+```
+
+#### 矢量图标设计规范
+
+每个绘制函数接收 `(ctx, entity)` 参数，从 entity 中读取：
+- `entity.x`, `entity.y` — 实体位置（底部中心点）
+- `entity.size` — 基准尺寸（用于缩放所有图标元素）
+- 颜色来源：士兵用 `entity.type.color`，敌人用 `entity.enemyType.color`
+
+绘制约束：
+- 所有路径使用 Canvas 2D `beginPath/moveTo/lineTo/arc/closePath` 绘制，不依赖外部图片资源
+- 主填充色 (`fillStyle`) 必须使用配置颜色
+- 描边色 (`strokeStyle`) 统一使用 `'#fff'`，线宽 1px，保持与现有风格一致
+- 图标绘制区域限制在 `size × size` 的包围盒内，锚点为底部中心
+
+#### 近战型图标细节
+
+**近战士兵（剑盾战士）**：
+- 身体：圆头 + 梯形躯干
+- 右手：向右上方延伸的剑（细长三角形）
+- 左手：向左前方的盾（小圆弧或矩形）
+- 整体朝右（面向敌人方向）
+
+**近战敌人（持斧蛮兵）**：
+- 身体：圆头 + 宽肩躯干
+- 双手：向上举起的战斧（斧刃为弧形）
+- 整体朝左（面向士兵方向）
+
+#### 远程型图标细节
+
+**远程士兵（法杖法师）**：
+- 身体：圆头 + 长袍轮廓（三角形裙摆）
+- 右手：向上倾斜的法杖（细线 + 顶端小圆）
+- 整体朝右
+
+**远程敌人（持弓射手）**：
+- 身体：圆头 + 轻甲躯干
+- 双手：持弓姿态（弧线弓身 + 弦线 + 箭矢）
+- 整体朝左
+
+#### 扩展方式
+
+新增战斗类型只需在 `COMBAT_RENDERERS` 中添加新的 key：
+
+```javascript
+COMBAT_RENDERERS['newType'] = {
+    drawSoldier(ctx, soldier) { /* 新图标绘制 */ },
+    drawEnemy(ctx, enemy) { /* 新图标绘制 */ }
+};
+```
+
+核心渲染器 (`Renderer`) 通过 `COMBAT_RENDERERS[entity.combatType]` 查找并调用，无需修改。
+
+### 13. InputHandler（输入处理）
 
 处理鼠标点击和键盘事件。
 
@@ -344,7 +451,96 @@ class InputHandler {
 }
 ```
 
-### 13. WaveManager（波次管理器）
+### 17. 战斗阶段棋子移动机制
+
+在战斗阶段，玩家可以将已放置的棋子从一个点位移动到另一个空点位，实现战术调整。
+
+#### 交互流程
+
+```mermaid
+stateDiagram-v2
+    [*] --> 空闲 : 战斗阶段
+    空闲 --> 已选中棋子 : 点击已放置棋子的点位
+    已选中棋子 --> 空闲 : 点击目标空点位（移动成功）
+    已选中棋子 --> 空闲 : 点击空白区域（取消选择）
+    已选中棋子 --> 已选中棋子 : 点击另一个已放置棋子的点位（切换选择）
+    已选中棋子 --> 空闲 : 再次点击同一个棋子（取消选择）
+```
+
+#### 游戏状态扩展
+
+在 `Game` 类中新增移动相关状态：
+
+```javascript
+// Game 类新增属性
+this.movingPiece = null;      // 当前选中待移动的点位（PinPoint 引用）
+```
+
+#### 移动逻辑（movePiece）
+
+在 `PinPoint` 或 `Game` 层面实现棋子移动：
+
+```javascript
+// Game 类新增方法
+movePiece(sourcePin, targetPin) {
+    if (sourcePin.isEmpty() || !targetPin.isEmpty()) return false;
+    const piece = sourcePin.chessPiece;
+    sourcePin.chessPiece = null;
+    targetPin.chessPiece = piece;
+    piece.pinPoint = targetPin;
+    return true;
+}
+```
+
+#### 移动约束
+
+- 仅在战斗阶段（`phase === 'combat'`）允许移动
+- 源点位必须有棋子（`!sourcePin.isEmpty()`）
+- 目标点位必须为空（`targetPin.isEmpty()`）
+- 移动不消耗金币
+- 移动不重置棋子的发射计时器（`lastFireTime` 保持不变）
+- 棋子类型在移动后保持不变
+
+#### 视觉反馈
+
+- 选中待移动的棋子时，该点位显示高亮边框（如白色闪烁或加粗描边）
+- 鼠标悬停在空点位上时，显示半透明的棋子预览（复用现有的待放置预览逻辑）
+- 移动成功后清除选中状态
+
+#### 点击事件处理扩展
+
+在战斗阶段的 canvas click 事件中新增移动逻辑：
+
+```javascript
+// 战斗阶段点击逻辑
+if (isCombatPhase) {
+    for (const pin of game.pinPoints) {
+        if (点击命中 pin) {
+            if (game.movingPiece) {
+                // 已选中棋子，尝试移动
+                if (pin.isEmpty()) {
+                    game.movePiece(game.movingPiece, pin);
+                    game.movingPiece = null;
+                } else if (pin === game.movingPiece) {
+                    // 再次点击同一棋子，取消选择
+                    game.movingPiece = null;
+                } else {
+                    // 点击另一个有棋子的点位，切换选择
+                    game.movingPiece = pin;
+                }
+            } else if (!pin.isEmpty()) {
+                // 选中棋子准备移动
+                game.movingPiece = pin;
+            }
+            return;
+        }
+    }
+    // 点击空白区域取消选择
+    game.movingPiece = null;
+}
+```
+
+### 14. WaveManager（波次管理器）
 
 管理波次推进、阶段切换和敌人生成调度。
 
@@ -369,7 +565,7 @@ class WaveManager {
 }
 ```
 
-### 14. Shop（商店系统）
+### 15. Shop（商店系统）
 
 管理棋子购买、金币扣除和商店 UI。
 
@@ -388,7 +584,7 @@ class Shop {
 }
 ```
 
-### 15. WaveConfig（波次配置数据）
+### 16. WaveConfig（波次配置数据）
 
 定义每个波次的敌人组成。
 
@@ -438,7 +634,8 @@ GameState = {
     waveManager: WaveManager,       // 波次管理器
     shop: Shop,                     // 商店系统
     score: number,                  // 分数（击败敌人）
-    breaches: number                // 防线被突破次数
+    breaches: number,               // 防线被突破次数
+    movingPiece: PinPoint | null    // 战斗阶段选中待移动的棋子点位
 }
 ```
 
@@ -631,6 +828,26 @@ erDiagram
 *对于任意*金币数量和波次转换，从战斗阶段进入下一波购买摆放阶段后，金币数量应保持不变。
 **Validates: Requirements 12.5**
 
+### Property 30: 渲染策略注册表完整性
+*对于任意* `combatType`（存在于 PIECE_TYPES 或 ENEMY_TYPES 中的），`COMBAT_RENDERERS` 中应存在对应的条目，且该条目包含 `drawSoldier` 和 `drawEnemy` 两个函数。
+**Validates: Requirements 13.1, 13.2, 13.5**
+
+### Property 31: 矢量图标使用配置颜色
+*对于任意*士兵或敌人实体，调用对应的 `COMBAT_RENDERERS` 绘制函数后，Canvas 上下文的 `fillStyle` 应被设置为该实体配置中的颜色值（士兵为 `type.color`，敌人为 `enemyType.color`）。
+**Validates: Requirements 13.4**
+
+### Property 32: 整备阶段不产生弹球和士兵
+*对于任意*处于整备阶段的游戏状态和任意数量的已放置棋子，执行游戏更新后，弹球列表和士兵列表的长度应保持不变（不产生新弹球和新士兵）。
+**Validates: Requirements 14.3**
+
+### Property 33: 战斗阶段棋子移动保持不变量
+*对于任意*处于战斗阶段的游戏状态、任意已放置棋子的源点位和任意空的目标点位，执行移动操作后：源点位应为空（isEmpty() 返回 true），目标点位应持有棋子（isEmpty() 返回 false），目标点位棋子的类型应与移动前源点位棋子的类型一致，且弹球台上棋子总数保持不变。
+**Validates: Requirements 14.5**
+
+### Property 34: 战斗阶段棋子移动到非空点位被拒绝
+*对于任意*处于战斗阶段的游戏状态和两个均已放置棋子的点位，执行移动操作后，两个点位的棋子状态应保持不变（移动被拒绝）。
+**Validates: Requirements 14.5**
+
 ## 错误处理
 
 ### Canvas 初始化
@@ -692,6 +909,8 @@ erDiagram
 - 波次系统：阶段切换正确性、敌人生成符合配置、波次完成检测
 - 商店系统：购买/退还金币往返、金币充足判定、战斗阶段禁止操作
 - 经济系统：击败敌人获得金币、波次转换保留金币、棋子价格配置
+- 渲染策略：注册表完整性（所有 combatType 均有对应绘制函数）、颜色一致性（绘制函数使用配置颜色）
+- 波次阶段行为：整备阶段不产生弹球和士兵、战斗阶段棋子移动不变量、移动到非空点位被拒绝
 
 ### 测试文件结构
 

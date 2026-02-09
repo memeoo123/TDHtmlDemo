@@ -237,11 +237,11 @@
     - 用加载的数据覆盖 `Physics.GRAVITY`、碰撞衰减系数、`Combat.MELEE_RANGE`、Game 中的各项上限参数
     - 加载失败时保留内置默认值
 
-- [ ] 14. 将初始棋子布局独立为外部配置
-  - [ ] 14.1 创建 `initial-layout.json` 初始布局配置文件
+- [x] 14. 将初始棋子布局独立为外部配置
+  - [x] 14.1 创建 `initial-layout.json` 初始布局配置文件
     - 定义初始棋子放置列表，每项包含 row、col、pieceType（对应 PIECE_TYPES 的 key）
     - 当前默认布局：`[{row:0, col:3, type:"FIRE"}, {row:1, col:2, type:"ICE"}, {row:2, col:4, type:"THUNDER"}]`
-  - [ ] 14.2 修改 `_placeInitialPieces` 读取外部布局配置
+  - [x] 14.2 修改 `_placeInitialPieces` 读取外部布局配置
     - 在 `loadConfigs` 中增加 `initial-layout.json` 的 fetch 加载
     - `_placeInitialPieces` 遍历配置数组，通过 pieceType key 查找 `PIECE_TYPES` 中的类型对象
     - 加载失败时使用内置默认布局
@@ -268,15 +268,15 @@
     - **Property 22: 战斗阶段敌人生成符合波次配置**
     - **Validates: Requirements 10.3, 10.4, 10.5**
 
-- [ ] 16. 实现商店与金币系统
-  - [ ] 16.1 实现 `Shop` 类
+- [x] 16. 实现商店与金币系统
+  - [x] 16.1 实现 `Shop` 类
     - 实现 constructor（初始金币数量）、gold、selectedPiece 属性
     - 实现 getGold()、addGold(amount)、canAfford(pieceType)
     - 实现 buyPiece(pieceType)：金币充足时扣除金币并设置 selectedPiece，不足时返回 false
     - 实现 refundPiece(pieceType)：返还棋子价格到金币
     - 实现 clearSelection()：清除待放置选择
     - _Requirements: 11.2, 11.4, 11.5, 12.1_
-  - [ ] 16.2 修改 Game 类集成金币经济
+  - [x] 16.2 修改 Game 类集成金币经济
     - 击败敌人时调用 shop.addGold(enemy.score) 增加金币
     - 在 UI 信息栏中显示当前金币数量
     - _Requirements: 12.2, 12.3_
@@ -287,22 +287,22 @@
     - **Property 28: 所有棋子类型具有正价格**
     - **Validates: Requirements 11.2, 11.4, 11.5, 12.2, 12.4**
 
-- [ ] 17. 检查点 - 确保波次和商店核心逻辑正常
+- [x] 17. 检查点 - 确保波次和商店核心逻辑正常
   - 确保所有测试通过，如有问题请询问用户。
 
-- [ ] 18. 实现购买摆放阶段 UI 与交互
-  - [ ] 18.1 实现商店面板渲染
+- [x] 18. 实现购买摆放阶段 UI 与交互
+  - [x] 18.1 实现商店面板渲染
     - 在 Renderer 中新增 drawShopPanel(shop) 方法
     - 在弹球台右侧或底部显示商店面板：棋子类型列表、价格、当前金币
     - 金币不足的棋子类型显示为灰色/禁用状态
     - _Requirements: 11.1, 11.4_
-  - [ ] 18.2 实现购买摆放阶段的交互逻辑
+  - [x] 18.2 实现购买摆放阶段的交互逻辑
     - 点击商店中的棋子类型触发 shop.buyPiece()，成功后进入待放置状态
     - 待放置状态下点击空点位放置棋子，调用 shop.clearSelection()
     - 点击已放置棋子的点位移除棋子并调用 shop.refundPiece() 退还金币
     - 添加"开始战斗"按钮，点击后调用 waveManager.startCombatPhase()
     - _Requirements: 11.2, 11.3, 11.5, 10.3_
-  - [ ] 18.3 实现波次信息 UI 显示
+  - [x] 18.3 实现波次信息 UI 显示
     - 在界面顶部显示当前波次编号/总波次数和当前阶段名称
     - 战斗阶段显示剩余敌人数量
     - _Requirements: 10.7_
@@ -311,21 +311,21 @@
     - **Property 26: 战斗阶段禁止商店操作**
     - **Validates: Requirements 11.3, 11.6**
 
-- [ ] 19. 集成波次流程到 Game 主循环
-  - [ ] 19.1 重构 Game.update 支持阶段感知
+- [x] 19. 集成波次流程到 Game 主循环
+  - [x] 19.1 重构 Game.update 支持阶段感知
     - 购买摆放阶段：跳过物理更新、棋子发射、敌人生成和战斗逻辑，仅渲染静态画面和商店
     - 战斗阶段：执行原有的完整更新逻辑，但敌人生成改为由 WaveManager 控制
     - 移除原有的 enemySpawnTimer 和固定间隔敌人生成逻辑
     - _Requirements: 10.4, 11.6_
-  - [ ] 19.2 实现波次完成与转换逻辑
+  - [x] 19.2 实现波次完成与转换逻辑
     - 每帧检测 waveManager.isWaveComplete()，完成时清理战场并进入下一波 shop 阶段
     - 检测 waveManager.isGameComplete()，完成时显示胜利画面
     - 波次转换时保留金币余额（shop.gold 不变）
     - _Requirements: 10.5, 10.6, 12.5_
-  - [ ] 19.3 修改 Game.reset 支持波次重置
+  - [x] 19.3 修改 Game.reset 支持波次重置
     - 重置时恢复到第一波购买摆放阶段，恢复初始金币，清除所有棋子
     - _Requirements: 7.4_
-  - [ ] 19.4 在 `index.html` 中加载 wave-config.json 并初始化波次系统
+  - [x] 19.4 在 `index.html` 中加载 wave-config.json 并初始化波次系统
     - 在 loadConfigs 中增加 wave-config.json 的 fetch 加载
     - 加载失败时使用内置默认波次配置
     - 初始化 WaveManager 和 Shop 实例
@@ -334,6 +334,67 @@
     - **Property 29: 波次转换保留金币**
     - **Validates: Requirements 12.5**
 
-- [ ] 20. 最终检查点 - 确保波次商店系统完整运行
+- [x] 20. 最终检查点 - 确保波次商店系统完整运行
   - 确保所有测试通过，如有问题请询问用户。
   - 验证完整流程：游戏开始 → 商店购买棋子 → 放置 → 开始战斗 → 击败敌人获金 → 下一波 → 最终胜利
+
+- [x] 21. 实现兵种自定义矢量图标
+  - [x] 21.1 重构 `combat-renderers.js` 中 `melee.drawSoldier` 为剑盾战士矢量图标
+    - 替换当前的方块绘制为剑盾战士轮廓：圆头 + 梯形躯干 + 右手持剑（细长三角形）+ 左手持盾（小矩形/圆弧）
+    - 使用 `soldier.type.color` 作为 `fillStyle` 主填充色
+    - 描边使用 `'#fff'`，线宽 1px
+    - 图标限制在 `size × size` 包围盒内，朝右（面向敌人方向）
+    - _Requirements: 13.1, 13.3, 13.4, 13.5_
+  - [x] 21.2 重构 `combat-renderers.js` 中 `melee.drawEnemy` 为持斧蛮兵矢量图标
+    - 替换当前的菱形绘制为持斧蛮兵轮廓：圆头 + 宽肩躯干 + 双手举起战斧（弧形斧刃）
+    - 使用 `enemy.enemyType.color` 作为 `fillStyle` 主填充色
+    - 描边使用 `'#fff'`，线宽 1px
+    - 图标朝左（面向士兵方向）
+    - _Requirements: 13.2, 13.3, 13.4, 13.5_
+  - [x] 21.3 重构 `combat-renderers.js` 中 `ranged.drawSoldier` 为法杖法师矢量图标
+    - 替换当前的三角形绘制为法杖法师轮廓：圆头 + 长袍轮廓（三角形裙摆）+ 右手持法杖（细线 + 顶端小圆光球）
+    - 使用 `soldier.type.color` 作为 `fillStyle` 主填充色
+    - 描边使用 `'#fff'`，线宽 1px
+    - 图标朝右
+    - _Requirements: 13.1, 13.3, 13.4, 13.5_
+  - [x] 21.4 重构 `combat-renderers.js` 中 `ranged.drawEnemy` 为持弓射手矢量图标
+    - 替换当前的倒三角形绘制为持弓射手轮廓：圆头 + 轻甲躯干 + 持弓姿态（弧线弓身 + 弦线 + 箭矢）
+    - 使用 `enemy.enemyType.color` 作为 `fillStyle` 主填充色
+    - 描边使用 `'#fff'`，线宽 1px
+    - 图标朝左
+    - _Requirements: 13.2, 13.3, 13.4, 13.5_
+  - [ ]* 21.5 编写渲染策略属性测试
+    - **Property 30: 渲染策略注册表完整性**
+    - **Property 31: 矢量图标使用配置颜色**
+    - **Validates: Requirements 13.1, 13.2, 13.4, 13.5**
+
+- [x] 22. 检查点 - 确保矢量图标渲染正常
+  - 确保所有测试通过，如有问题请询问用户。
+  - 在浏览器中验证每种兵种的矢量图标是否正确显示，颜色是否与配置一致
+
+- [x] 23. 实现战斗阶段棋子移动功能
+  - [x] 23.1 在 `Game` 类中新增 `movePiece` 方法和 `movingPiece` 状态
+    - 新增 `this.movingPiece = null` 属性（在 constructor 和 init 中初始化）
+    - 实现 `movePiece(sourcePin, targetPin)` 方法：验证源点位有棋子且目标点位为空，将棋子从源点位转移到目标点位，更新棋子的 `pinPoint` 引用，保留 `lastFireTime` 不变
+    - 移动失败时返回 false，成功时返回 true
+    - _Requirements: 14.5_
+  - [x] 23.2 在战斗阶段的 canvas click 事件中新增棋子移动交互逻辑
+    - 战斗阶段（`phase === 'combat'`）点击已放置棋子的点位时，设置 `game.movingPiece` 为该点位
+    - 已选中棋子后点击空点位，调用 `game.movePiece` 执行移动并清除选中状态
+    - 已选中棋子后再次点击同一点位，取消选择
+    - 已选中棋子后点击另一个有棋子的点位，切换选择目标
+    - 点击空白区域取消选择
+    - _Requirements: 14.5_
+  - [x] 23.3 实现选中棋子的视觉反馈
+    - 在 `Renderer.drawPinPoint` 中检测该点位是否为 `game.movingPiece`，是则绘制高亮边框（白色加粗描边或闪烁效果）
+    - 战斗阶段选中棋子后，鼠标悬停在空点位上时显示半透明棋子预览
+    - 在 `Game.reset` 中清除 `movingPiece` 状态
+    - _Requirements: 14.5_
+  - [ ] 23.4 编写战斗阶段棋子移动属性测试
+    - **Property 33: 战斗阶段棋子移动保持不变量**
+    - **Property 34: 战斗阶段棋子移动到非空点位被拒绝**
+    - **Validates: Requirements 14.5**
+
+- [ ] 24. 检查点 - 确保战斗阶段棋子移动功能正常
+  - 确保所有测试通过，如有问题请询问用户。
+  - 验证战斗阶段可以选中棋子并移动到空点位，移动后棋子继续正常发射弹球

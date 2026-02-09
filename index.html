@@ -61,10 +61,12 @@
         <span>士兵: <strong id="soldierCount">0</strong></span>
         <span>敌人: <strong id="enemyCount">0</strong></span>
         <span>弹球: <strong id="ballCount">0</strong></span>
+        <span>金币: <strong id="goldCount">0</strong></span>
     </div>
     <canvas id="gameCanvas" width="600" height="700"></canvas>
 
 <script src="board-config.js"></script>
+<script src="initial-layout.js"></script>
 <script src="combat-behaviors.js"></script>
 <script src="combat-renderers.js"></script>
 
@@ -450,6 +452,20 @@ class Combat {
 }
 
 // ============================================================
+// 初始棋子布局配置（内置默认值，可被外部 JS 覆盖）
+// ============================================================
+let INITIAL_LAYOUT = [
+    { row: 0, col: 3, type: 'FIRE' },
+    { row: 1, col: 2, type: 'ICE' },
+    { row: 2, col: 4, type: 'THUNDER' }
+];
+
+// 如果外部 initial-layout.js 已加载，用它覆盖默认值
+if (typeof INITIAL_LAYOUT_EXTERNAL !== 'undefined') {
+    INITIAL_LAYOUT = INITIAL_LAYOUT_EXTERNAL;
+}
+
+// ============================================================
 // 波次配置（内置默认值，可被外部 JSON 覆盖）
 // ============================================================
 let WAVE_CONFIGS = [
@@ -576,6 +592,47 @@ class WaveManager {
 }
 
 // ============================================================
+// Shop 商店系统
+// ============================================================
+class Shop {
+    constructor(initialGold = 50) {
+        this.gold = initialGold;
+        this.selectedPiece = null;
+    }
+
+    getGold() {
+        return this.gold;
+    }
+
+    addGold(amount) {
+        if (amount > 0) {
+            this.gold += amount;
+        }
+    }
+
+    canAfford(pieceType) {
+        return pieceType && typeof pieceType.price === 'number' && this.gold >= pieceType.price;
+    }
+
+    buyPiece(pieceType) {
+        if (!this.canAfford(pieceType)) return false;
+        this.gold -= pieceType.price;
+        this.selectedPiece = pieceType;
+        return true;
+    }
+
+    refundPiece(pieceType) {
+        if (pieceType && typeof pieceType.price === 'number') {
+            this.gold += pieceType.price;
+        }
+    }
+
+    clearSelection() {
+        this.selectedPiece = null;
+    }
+}
+
+// ============================================================
 // Physics 物理系统
 // ============================================================
 class Physics {
@@ -693,7 +750,7 @@ class Renderer {
         ctx.fillRect(t, BoardConfig.groundY, w - 2 * t, BoardConfig.groundAreaHeight);
     }
 
-    drawPinPoint(pin) {
+    drawPinPoint(pin, isMovingSource) {
         const ctx = this.ctx;
         ctx.beginPath();
         ctx.arc(pin.x, pin.y, pin.radius, 0, Math.PI * 2);
@@ -720,6 +777,19 @@ class Renderer {
             ctx.font = '9px sans-serif';
             ctx.textAlign = 'center';
             ctx.fillText(pin.chessPiece.type.name[0], pin.x, pin.y + 3);
+        }
+        // 选中待移动的棋子高亮
+        if (isMovingSource && !pin.isEmpty()) {
+            ctx.beginPath();
+            ctx.arc(pin.x, pin.y, pin.radius + 7, 0, Math.PI * 2);
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(pin.x, pin.y, pin.radius + 10, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
         }
     }
 
@@ -823,6 +893,120 @@ class Renderer {
             panel.buttons.push({ x: bx, y: by, w: bw, h: bh, type: types[i] });
         }
     }
+
+    drawShopPanel(shop, waveManager) {
+        const ctx = this.ctx;
+        const types = PIECE_TYPE_LIST;
+        const keys = Object.keys(PIECE_TYPES);
+        const panelW = 160;
+        const itemH = 36;
+        const headerH = 32;
+        const footerH = 36;
+        const panelH = headerH + itemH * types.length + footerH + 8;
+        const px = BoardConfig.width - panelW - 4;
+        const py = 4;
+
+        // 背景
+        ctx.fillStyle = 'rgba(15, 15, 35, 0.93)';
+        ctx.strokeStyle = '#88a';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(px, py, panelW, panelH, 6);
+        ctx.fill();
+        ctx.stroke();
+
+        // 标题 + 金币
+        ctx.fillStyle = '#FFD700';
+        ctx.font = 'bold 13px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('🪙 ' + shop.getGold(), px + 10, py + 22);
+        ctx.fillStyle = '#ccc';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText('商店', px + panelW - 10, py + 22);
+
+        // 棋子列表
+        this._shopButtons = [];
+        for (let i = 0; i < types.length; i++) {
+            const t = types[i];
+            const bx = px + 8;
+            const by = py + headerH + i * itemH;
+            const bw = panelW - 16;
+            const bh = itemH - 4;
+            const affordable = shop.canAfford(t);
+
+            // 按钮背景
+            ctx.fillStyle = affordable ? 'rgba(40, 40, 70, 0.9)' : 'rgba(30, 30, 40, 0.6)';
+            ctx.beginPath();
+            ctx.roundRect(bx, by, bw, bh, 4);
+            ctx.fill();
+
+            // 左侧色块
+            ctx.fillStyle = affordable ? t.color : '#555';
+            ctx.fillRect(bx + 4, by + 5, 8, bh - 10);
+
+            // 名称
+            ctx.fillStyle = affordable ? '#eee' : '#666';
+            ctx.font = '12px sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText(t.name, bx + 18, by + bh / 2 + 4);
+
+            // 价格
+            ctx.fillStyle = affordable ? '#FFD700' : '#555';
+            ctx.textAlign = 'right';
+            ctx.fillText('🪙' + t.price, bx + bw - 6, by + bh / 2 + 4);
+
+            // 选中高亮
+            if (shop.selectedPiece === t) {
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.roundRect(bx, by, bw, bh, 4);
+                ctx.stroke();
+            }
+
+            this._shopButtons.push({ x: bx, y: by, w: bw, h: bh, type: t, key: keys[i], affordable: affordable });
+        }
+
+        // "开始战斗" 按钮
+        const btnX = px + 8;
+        const btnY = py + headerH + types.length * itemH + 4;
+        const btnW = panelW - 16;
+        const btnH = 28;
+        ctx.fillStyle = '#5cb85c';
+        ctx.beginPath();
+        ctx.roundRect(btnX, btnY, btnW, btnH, 4);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 13px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('⚔ 开始战斗', btnX + btnW / 2, btnY + btnH / 2 + 5);
+
+        this._startCombatBtn = { x: btnX, y: btnY, w: btnW, h: btnH };
+    }
+
+    drawWaveInfo(waveManager, enemies) {
+        const ctx = this.ctx;
+        const phaseText = waveManager.phase === 'shop' ? '购买摆放阶段' : '战斗阶段';
+        const waveText = '波次 ' + waveManager.currentWave + '/' + waveManager.totalWaves;
+
+        // 顶部信息条背景
+        ctx.fillStyle = 'rgba(15, 15, 35, 0.8)';
+        ctx.fillRect(BoardConfig.wallThickness, BoardConfig.wallThickness, 200, 22);
+
+        ctx.fillStyle = '#e0e0ff';
+        ctx.font = 'bold 12px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(waveText + '  |  ' + phaseText, BoardConfig.wallThickness + 6, BoardConfig.wallThickness + 16);
+
+        // 战斗阶段显示剩余敌人
+        if (waveManager.phase === 'combat') {
+            const remaining = waveManager.enemySpawnQueue.length + enemies.filter(e => e.alive).length;
+            ctx.fillStyle = '#f88';
+            ctx.font = '11px sans-serif';
+            ctx.fillText('剩余敌人: ' + remaining, BoardConfig.wallThickness + 6, BoardConfig.wallThickness + 36);
+        }
+    }
 }
 
 // ============================================================
@@ -847,9 +1031,18 @@ class Game {
         this.breaches = 0;
         this.lastTime = 0;
         this.animFrameId = null;
-        this.enemySpawnTimer = 0;
-        this.enemySpawnInterval = 3000; // 每3秒生成一个敌人
         this.selectionPanel = null;
+        this.gameWon = false;
+        this.shop = new Shop(50);
+        this._mousePos = null;
+        this.movingPiece = null;
+        this.waveManager = new WaveManager(WAVE_CONFIGS);
+        this.waveManager.onClearBattlefield = () => {
+            this.balls = [];
+            this.soldiers = [];
+            this.enemies = [];
+            this.projectiles = [];
+        };
     }
 
     init() {
@@ -860,6 +1053,18 @@ class Game {
         this.projectiles = [];
         this.score = 0;
         this.breaches = 0;
+        this.gameWon = false;
+        this.movingPiece = null;
+
+        // 重新初始化波次管理器（确保使用最新配置）
+        this.waveManager = new WaveManager(WAVE_CONFIGS);
+        this.waveManager.onClearBattlefield = () => {
+            this.balls = [];
+            this.soldiers = [];
+            this.enemies = [];
+            this.projectiles = [];
+        };
+        this.shop = new Shop(50);
 
         // 生成点位（交错排列）
         for (let row = 0; row < BoardConfig.pinRows; row++) {
@@ -877,16 +1082,12 @@ class Game {
     }
 
     _placeInitialPieces() {
-        // 在第1行放一个火战士，第2行放一个冰法师，第3行放一个雷战士
-        const placements = [
-            { row: 0, col: 3, type: PIECE_TYPES.FIRE },
-            { row: 1, col: 2, type: PIECE_TYPES.ICE },
-            { row: 2, col: 4, type: PIECE_TYPES.THUNDER },
-        ];
-        for (const p of placements) {
+        for (const p of INITIAL_LAYOUT) {
+            const pieceType = PIECE_TYPES[p.type];
+            if (!pieceType) continue;
             const idx = this._getPinIndex(p.row, p.col);
             if (idx >= 0 && idx < this.pinPoints.length) {
-                this.pinPoints[idx].placePiece(p.type);
+                this.pinPoints[idx].placePiece(pieceType);
             }
         }
     }
@@ -897,6 +1098,15 @@ class Game {
             idx += (r % 2 === 1) ? BoardConfig.pinCols - 1 : BoardConfig.pinCols;
         }
         return idx + col;
+    }
+
+    movePiece(sourcePin, targetPin) {
+        if (sourcePin.isEmpty() || !targetPin.isEmpty()) return false;
+        const piece = sourcePin.chessPiece;
+        sourcePin.chessPiece = null;
+        targetPin.chessPiece = piece;
+        piece.pinPoint = targetPin;
+        return true;
     }
 
     start() {
@@ -924,13 +1134,11 @@ class Game {
             this.animFrameId = null;
         }
         this.init();
-        this.enemySpawnTimer = 0;
+        this.selectionPanel = null;
+        this.movingPiece = null;
+        this.gameWon = false;
         this.render();
-        document.getElementById('score').textContent = '0';
-        document.getElementById('breaches').textContent = '0';
-        document.getElementById('soldierCount').textContent = '0';
-        document.getElementById('enemyCount').textContent = '0';
-        document.getElementById('ballCount').textContent = '0';
+        this._updateUI();
     }
 
     _loop(timestamp) {
@@ -944,14 +1152,26 @@ class Game {
 
     update(dt) {
         const now = performance.now();
+
+        // 游戏已胜利，不再更新
+        if (this.gameWon) {
+            this._updateUI();
+            return;
+        }
+
+        // 购买摆放阶段：跳过物理、棋子发射、敌人生成和战斗逻辑
+        if (this.waveManager.phase === 'shop') {
+            this._updateUI();
+            return;
+        }
+
+        // === 战斗阶段逻辑 ===
         const bounds = { width: BoardConfig.width, height: BoardConfig.height };
 
-        // 敌人生成
-        this.enemySpawnTimer += dt;
-        if (this.enemySpawnTimer >= this.enemySpawnInterval && this.enemies.length < 30) {
-            this.enemySpawnTimer = 0;
-            const type = ENEMY_TYPE_LIST[Math.floor(Math.random() * ENEMY_TYPE_LIST.length)];
-            this.enemies.push(new Enemy(BoardConfig.width - BoardConfig.wallThickness - 10, BoardConfig.groundY, type));
+        // 敌人生成由 WaveManager 控制
+        const spawnType = this.waveManager.update(dt, this.enemies);
+        if (spawnType && this.enemies.length < 30) {
+            this.enemies.push(new Enemy(BoardConfig.width - BoardConfig.wallThickness - 10, BoardConfig.groundY, spawnType));
         }
 
         // 棋子自动发射弹球
@@ -1014,6 +1234,7 @@ class Game {
         for (const e of this.enemies) {
             if (!e.alive && e.score > 0) {
                 this.score += e.score;
+                this.shop.addGold(e.score);
                 e.score = 0; // 防止重复计分
             }
         }
@@ -1032,12 +1253,23 @@ class Game {
         this.enemies = cleaned.enemies;
         this.projectiles = cleaned.projectiles;
 
-        // 更新 UI
+        // 波次完成检测
+        if (this.waveManager.isGameComplete(this.enemies)) {
+            this.gameWon = true;
+        } else if (this.waveManager.isWaveComplete(this.enemies)) {
+            this.waveManager.nextWave();
+        }
+
+        this._updateUI();
+    }
+
+    _updateUI() {
         document.getElementById('soldierCount').textContent = this.soldiers.length;
         document.getElementById('enemyCount').textContent = this.enemies.length;
         document.getElementById('ballCount').textContent = this.balls.length;
         document.getElementById('score').textContent = this.score;
         document.getElementById('breaches').textContent = this.breaches;
+        document.getElementById('goldCount').textContent = this.shop.getGold();
     }
 
     render() {
@@ -1045,7 +1277,7 @@ class Game {
         this.renderer.drawBoard();
 
         for (const pin of this.pinPoints) {
-            this.renderer.drawPinPoint(pin);
+            this.renderer.drawPinPoint(pin, this.movingPiece === pin);
         }
 
         for (const ball of this.balls) {
@@ -1069,6 +1301,52 @@ class Game {
             this.renderer.drawSelectionPanel(this.selectionPanel);
         }
 
+        // 商店面板（购买摆放阶段）
+        if (this.waveManager && this.waveManager.phase === 'shop') {
+            this.renderer.drawShopPanel(this.shop, this.waveManager);
+        }
+
+        // 波次信息 UI
+        if (this.waveManager) {
+            this.renderer.drawWaveInfo(this.waveManager, this.enemies);
+        }
+
+        // 待放置棋子跟随鼠标提示
+        if (this.shop.selectedPiece && this._mousePos) {
+            const ctx = this.ctx;
+            ctx.globalAlpha = 0.5;
+            ctx.beginPath();
+            ctx.arc(this._mousePos.x, this._mousePos.y, 10, 0, Math.PI * 2);
+            ctx.fillStyle = this.shop.selectedPiece.color;
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.globalAlpha = 1.0;
+        }
+
+        // 战斗阶段选中棋子后，鼠标悬停在空点位上时显示半透明棋子预览
+        if (this.movingPiece && !this.movingPiece.isEmpty() && this._mousePos && this.waveManager.phase === 'combat') {
+            for (const pin of this.pinPoints) {
+                if (!pin.isEmpty()) continue;
+                const dx = this._mousePos.x - pin.x;
+                const dy = this._mousePos.y - pin.y;
+                if (dx * dx + dy * dy <= (pin.radius + 6) * (pin.radius + 6)) {
+                    const ctx = this.ctx;
+                    ctx.globalAlpha = 0.4;
+                    ctx.beginPath();
+                    ctx.arc(pin.x, pin.y, pin.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = this.movingPiece.chessPiece.type.color;
+                    ctx.fill();
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                    ctx.globalAlpha = 1.0;
+                    break;
+                }
+            }
+        }
+
         // 暂停遮罩
         if (this.status === 'paused') {
             const ctx = this.ctx;
@@ -1081,6 +1359,23 @@ class Game {
             ctx.font = '16px sans-serif';
             ctx.fillStyle = '#aaa';
             ctx.fillText('点击「继续」按钮恢复游戏', BoardConfig.width / 2, BoardConfig.height / 2 + 30);
+        }
+
+        // 胜利画面
+        if (this.gameWon) {
+            const ctx = this.ctx;
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.fillRect(0, 0, BoardConfig.width, BoardConfig.height);
+            ctx.fillStyle = '#FFD700';
+            ctx.font = 'bold 36px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('🎉 胜利！', BoardConfig.width / 2, BoardConfig.height / 2 - 20);
+            ctx.fillStyle = '#fff';
+            ctx.font = '18px sans-serif';
+            ctx.fillText('所有波次已击退！得分: ' + this.score, BoardConfig.width / 2, BoardConfig.height / 2 + 20);
+            ctx.fillStyle = '#aaa';
+            ctx.font = '14px sans-serif';
+            ctx.fillText('点击「重置」按钮重新开始', BoardConfig.width / 2, BoardConfig.height / 2 + 50);
         }
     }
 }
@@ -1139,44 +1434,133 @@ document.getElementById('btn-pause').addEventListener('click', () => game.pause(
 document.getElementById('btn-resume').addEventListener('click', () => game.resume());
 document.getElementById('btn-reset').addEventListener('click', () => { game.reset(); game.start(); });
 
-// 点击点位放置/移除棋子（带选择面板）
+// 点击交互：商店购买、棋子放置/移除、发射器
 canvas.addEventListener('click', (e) => {
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
 
-    // 如果选择面板打开，检查是否点击了面板按钮
+    const isShopPhase = game.waveManager && game.waveManager.phase === 'shop';
+
+    // 1. 商店面板点击（仅购买摆放阶段）
+    if (isShopPhase && game.renderer._shopButtons) {
+        // 检查"开始战斗"按钮
+        const sb = game.renderer._startCombatBtn;
+        if (sb && mx >= sb.x && mx <= sb.x + sb.w && my >= sb.y && my <= sb.y + sb.h) {
+            game.shop.clearSelection();
+            game.selectionPanel = null;
+            game.waveManager.startCombatPhase();
+            return;
+        }
+
+        // 检查商店棋子按钮
+        for (const btn of game.renderer._shopButtons) {
+            if (mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h) {
+                if (btn.affordable) {
+                    game.shop.buyPiece(btn.type);
+                    game.selectionPanel = null; // 关闭旧面板
+                }
+                if (game.status === 'paused') game.render();
+                return;
+            }
+        }
+    }
+
+    // 2. 如果有待放置棋子，点击空点位放置
+    if (isShopPhase && game.shop.selectedPiece) {
+        for (const pin of game.pinPoints) {
+            const dx = mx - pin.x;
+            const dy = my - pin.y;
+            if (dx * dx + dy * dy <= (pin.radius + 6) * (pin.radius + 6)) {
+                if (pin.isEmpty()) {
+                    pin.placePiece(game.shop.selectedPiece);
+                    game.shop.clearSelection();
+                } else {
+                    // 点击已有棋子的点位 → 移除并退还
+                    const oldType = pin.chessPiece.type;
+                    pin.removePiece();
+                    game.shop.refundPiece(oldType);
+                }
+                if (game.status === 'paused') game.render();
+                return;
+            }
+        }
+        // 点击空白区域取消选择（退还金币）
+        game.shop.refundPiece(game.shop.selectedPiece);
+        game.shop.clearSelection();
+        if (game.status === 'paused') game.render();
+        return;
+    }
+
+    // 3. 购买摆放阶段无待放置棋子时，点击已有棋子点位移除并退还
+    if (isShopPhase) {
+        for (const pin of game.pinPoints) {
+            const dx = mx - pin.x;
+            const dy = my - pin.y;
+            if (dx * dx + dy * dy <= (pin.radius + 6) * (pin.radius + 6)) {
+                if (!pin.isEmpty()) {
+                    const oldType = pin.chessPiece.type;
+                    pin.removePiece();
+                    game.shop.refundPiece(oldType);
+                }
+                if (game.status === 'paused') game.render();
+                return;
+            }
+        }
+    }
+
+    // 4. 战斗阶段棋子移动逻辑
+    if (!isShopPhase && game.waveManager && game.waveManager.phase === 'combat') {
+        for (const pin of game.pinPoints) {
+            const dx = mx - pin.x;
+            const dy = my - pin.y;
+            if (dx * dx + dy * dy <= (pin.radius + 6) * (pin.radius + 6)) {
+                if (game.movingPiece) {
+                    if (pin === game.movingPiece) {
+                        // 再次点击同一棋子，取消选择
+                        game.movingPiece = null;
+                    } else if (pin.isEmpty()) {
+                        // 点击空点位，执行移动
+                        game.movePiece(game.movingPiece, pin);
+                        game.movingPiece = null;
+                    } else {
+                        // 点击另一个有棋子的点位，切换选择
+                        game.movingPiece = pin;
+                    }
+                } else if (!pin.isEmpty()) {
+                    // 选中棋子准备移动
+                    game.movingPiece = pin;
+                }
+                return;
+            }
+        }
+        // 点击空白区域取消选择
+        game.movingPiece = null;
+        return;
+    }
+
+    // 5. 旧的选择面板逻辑（战斗阶段中仍可查看，但不可操作商店）
     if (game.selectionPanel && game.selectionPanel.buttons) {
         for (const btn of game.selectionPanel.buttons) {
             if (mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h) {
+                // 战斗阶段禁止放置
+                if (!isShopPhase) return;
                 game.selectionPanel.pin.placePiece(btn.type);
                 game.selectionPanel = null;
                 if (game.status === 'paused') game.render();
                 return;
             }
         }
-        // 点击面板外关闭面板
         game.selectionPanel = null;
         if (game.status === 'paused') game.render();
         return;
     }
+});
 
-    // 检查是否点击了点位
-    for (const pin of game.pinPoints) {
-        const dx = mx - pin.x;
-        const dy = my - pin.y;
-        if (dx * dx + dy * dy <= (pin.radius + 6) * (pin.radius + 6)) {
-            if (pin.isEmpty()) {
-                // 打开选择面板
-                game.selectionPanel = { x: pin.x, y: pin.y, pin: pin, buttons: [] };
-                if (game.status === 'paused') game.render();
-            } else {
-                pin.removePiece();
-                if (game.status === 'paused') game.render();
-            }
-            return;
-        }
-    }
+// 鼠标移动跟踪（用于待放置棋子预览）
+canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    game._mousePos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
 });
 
 </script>
