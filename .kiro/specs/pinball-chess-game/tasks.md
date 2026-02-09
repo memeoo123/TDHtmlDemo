@@ -39,6 +39,8 @@
 - [ ]* 18.4 编写放置与阶段门控属性测试（Property 25-26）
 - [ ]* 19.5 编写波次转换属性测试（Property 29）
 - [ ]* 21.5 编写渲染策略属性测试（Property 30-31）
+- [ ]* 25.4 编写升级合并核心属性测试（Property 35-37）
+- [ ]* 28.5 编写拖拽交互属性测试（Property 41-45）
 
 ## 未完成的必需任务
 
@@ -107,26 +109,45 @@
 - [ ] 27. 检查点 - 确保升级核心逻辑和属性传递正常
   - 确保所有测试通过，如有问题请询问用户。
 
-- [ ] 28. 实现整备阶段升级交互与视觉反馈
-  - [ ] 28.1 在整备阶段的 canvas click 事件中新增合并交互逻辑
-    - 整备阶段选中已放置棋子后，点击另一个已放置棋子的点位时：
-      - 若同类型同等级 → 调用 `game.mergePieces()` 执行合并
-      - 若不同类型或不同等级 → 切换选择到目标棋子（或提示无法合并）
-    - 选中棋子后点击空点位 → 执行移动（复用现有逻辑）
-    - _Requirements: 15.1, 15.2_
-  - [ ] 28.2 在 `Renderer.drawPinPoint` 中显示棋子等级标识
-    - 在棋子点位上方绘制等级数字（"Lv.1" ~ "Lv.5"）
-    - 等级越高描边/光环越亮（通过 strokeStyle alpha 或线宽区分）
-    - 5 级棋子额外绘制技能图标或特殊光效
-    - _Requirements: 15.8_
-  - [ ]* 28.3 编写阶段门控属性测试
-    - **Property 40: 战斗阶段禁止升级操作**
-    - **Property 41: 移除升级棋子退还基础价格**
-    - **Validates: Requirements 15.7, 15.9**
+- [x] 28. 实现拖拽交互系统与卖出机制
+  - [x] 28.1 实现 `DragManager` 类
+    - 实现 constructor(game)、dragSource、isDragging、dragPreviewPos 属性
+    - 实现 startDragFromShop(pieceType)：记录拖拽来源为商店棋子类型
+    - 实现 startDragFromPin(pin)：记录拖拽来源为点位棋子
+    - 实现 updateDragPosition(x, y)：更新拖拽预览坐标
+    - 实现 endDrag(targetPin, isShopArea)：根据来源和目标执行购买/移动/升级/交换/卖出
+    - 实现 cancelDrag()：取消拖拽，恢复原状
+    - _Requirements: 3.1-3.9_
+  - [x] 28.2 实现 `ChessPiece.getSellPrice()` 和 `Game.swapPieces()` 方法
+    - 实现静态方法 `ChessPiece.getTotalValue(pieceType, level)`：返回 `2^(level-1) × pieceType.price`
+    - 实现静态方法 `ChessPiece.getSellPrice(pieceType, level)`：返回 `floor(getTotalValue / 2)`
+    - 实现 `Game.swapPieces(pinA, pinB)`：交换两个点位上的棋子
+    - 修改 `Shop` 类新增 `sellPiece(pieceType, level)` 方法，增加 getSellPrice 计算的金币
+    - _Requirements: 3.5, 3.6, 3.9_
+  - [x] 28.3 替换现有点击交互为拖拽交互
+    - 替换 canvas click 事件为 mousedown/mousemove/mouseup 事件组合
+    - mousedown 在商店棋子上 → startDragFromShop
+    - mousedown 在点位棋子上 → startDragFromPin
+    - mousemove → updateDragPosition
+    - mouseup → endDrag（判断目标是点位还是商店区域）
+    - 移除旧的 selectionPanel 和 movingPiece 逻辑
+    - _Requirements: 3.1-3.8_
+  - [x] 28.4 在 Renderer 中实现拖拽预览绘制
+    - 拖拽过程中在鼠标位置绘制半透明棋子预览
+    - 高亮有效的放置目标点位
+    - 在 `Renderer.drawPinPoint` 中显示棋子等级标识（"Lv.1" ~ "Lv.5"）
+    - _Requirements: 3.8_
+  - [ ]* 28.5 编写拖拽交互属性测试
+    - **Property 41: 卖出棋子退还总价值一半**
+    - **Property 42: 拖拽商店棋子到空点位完成购买**
+    - **Property 43: 拖拽点位棋子到已有棋子点位交换位置**
+    - **Property 44: 战斗阶段禁止卖出**
+    - **Property 45: 金币不足时拒绝购买**
+    - **Validates: Requirements 3.1, 3.2, 3.5, 3.6, 3.7, 3.9**
 
-- [ ] 29. 最终检查点 - 确保棋子升级系统完整运行
+- [ ] 29. 最终检查点 - 确保棋子升级系统和拖拽交互完整运行
   - 确保所有测试通过，如有问题请询问用户。
-  - 验证完整流程：购买两个同类型棋子 → 放置 → 拖拽合并升级 → 升级后属性增强 → 士兵继承增强属性 → 5 级解锁技能
+  - 验证完整流程：从商店拖拽购买棋子 → 拖拽到点位放置 → 拖拽合并升级 → 拖拽交换位置 → 拖拽到商店卖出 → 战斗阶段禁止卖出但允许移动和升级
 
 ## 备注
 

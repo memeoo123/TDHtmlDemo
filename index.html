@@ -217,6 +217,17 @@ class ChessPiece {
         return this.level >= 5;
     }
 
+    // 计算棋子总价值（合成所需的基础棋子数量 × 单价）
+    static getTotalValue(pieceType, level) {
+        const baseCount = Math.pow(2, level - 1);
+        return baseCount * pieceType.price;
+    }
+
+    // 卖出价格 = 总价值 / 2
+    static getSellPrice(pieceType, level) {
+        return Math.floor(ChessPiece.getTotalValue(pieceType, level) / 2);
+    }
+
     canFire(now) {
         return (now - this.lastFireTime) >= this.type.fireInterval;
     }
@@ -676,6 +687,15 @@ class Shop {
         }
     }
 
+    sellPiece(pieceType, level) {
+        if (pieceType && typeof pieceType.price === 'number') {
+            const sellPrice = ChessPiece.getSellPrice(pieceType, level);
+            this.gold += sellPrice;
+            return sellPrice;
+        }
+        return 0;
+    }
+
     clearSelection() {
         this.selectedPiece = null;
     }
@@ -800,16 +820,25 @@ class Renderer {
         ctx.fillRect(t, BoardConfig.groundY, w - 2 * t, BoardConfig.groundAreaHeight);
     }
 
-    drawPinPoint(pin, isMovingSource) {
+    drawPinPoint(pin, isMovingSource, isDragTarget) {
         const ctx = this.ctx;
         ctx.beginPath();
         ctx.arc(pin.x, pin.y, pin.radius, 0, Math.PI * 2);
         if (pin.isEmpty()) {
-            ctx.fillStyle = '#667';
-            ctx.fill();
-            ctx.strokeStyle = '#889';
-            ctx.lineWidth = 1;
-            ctx.stroke();
+            // 拖拽中高亮有效的空目标点位
+            if (isDragTarget) {
+                ctx.fillStyle = 'rgba(100, 255, 100, 0.3)';
+                ctx.fill();
+                ctx.strokeStyle = '#8f8';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            } else {
+                ctx.fillStyle = '#667';
+                ctx.fill();
+                ctx.strokeStyle = '#889';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
         } else {
             const color = pin.chessPiece.type.color;
             ctx.fillStyle = color;
@@ -827,8 +856,14 @@ class Renderer {
             ctx.font = '9px sans-serif';
             ctx.textAlign = 'center';
             ctx.fillText(pin.chessPiece.type.name[0], pin.x, pin.y + 3);
+            // 等级标识
+            const level = pin.chessPiece.level;
+            ctx.fillStyle = level >= 5 ? '#FFD700' : '#ccc';
+            ctx.font = 'bold 8px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('Lv.' + level, pin.x, pin.y - pin.radius - 3);
         }
-        // 选中待移动的棋子高亮
+        // 选中待移动的棋子高亮（拖拽源）
         if (isMovingSource && !pin.isEmpty()) {
             ctx.beginPath();
             ctx.arc(pin.x, pin.y, pin.radius + 7, 0, Math.PI * 2);
@@ -841,6 +876,39 @@ class Renderer {
             ctx.lineWidth = 1;
             ctx.stroke();
         }
+    }
+
+    drawDragPreview(dragManager) {
+        if (!dragManager.isDragging || !dragManager.dragPreviewPos) return;
+        const ctx = this.ctx;
+        const pos = dragManager.dragPreviewPos;
+        const source = dragManager.dragSource;
+        let color = '#fff';
+        let label = '';
+
+        if (source.type === 'shop') {
+            color = source.pieceType.color;
+            label = source.pieceType.name[0];
+        } else if (source.type === 'pin' && source.pin && !source.pin.isEmpty()) {
+            color = source.pin.chessPiece.type.color;
+            label = source.pin.chessPiece.type.name[0];
+        }
+
+        ctx.globalAlpha = 0.6;
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        if (label) {
+            ctx.fillStyle = '#fff';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(label, pos.x, pos.y + 3);
+        }
+        ctx.globalAlpha = 1.0;
     }
 
     drawBall(ball) {
@@ -1060,6 +1128,131 @@ class Renderer {
 }
 
 // ============================================================
+// DragManager 拖拽管理器
+// ============================================================
+class DragManager {
+    constructor(game) {
+        this.game = game;
+        this.dragSource = null;   // { type: 'shop'|'pin', pieceType?, pin? }
+        this.isDragging = false;
+        this.dragPreviewPos = null; // { x, y }
+    }
+
+    startDragFromShop(pieceType) {
+        this.dragSource = { type: 'shop', pieceType: pieceType };
+        this.isDragging = true;
+        this.dragPreviewPos = null;
+    }
+
+    startDragFromPin(pin) {
+        this.dragSource = { type: 'pin', pin: pin };
+        this.isDragging = true;
+        this.dragPreviewPos = null;
+    }
+
+    updateDragPosition(x, y) {
+        if (this.isDragging) {
+            this.dragPreviewPos = { x, y };
+        }
+    }
+
+    endDrag(targetPin, isShopArea) {
+        if (!this.isDragging || !this.dragSource) {
+            this.cancelDrag();
+            return false;
+        }
+
+        const game = this.game;
+        const isShopPhase = game.waveManager && game.waveManager.phase === 'shop';
+        const source = this.dragSource;
+        let result = false;
+
+        if (source.type === 'shop') {
+            // 从商店拖拽
+            if (!isShopPhase) {
+                // 战斗阶段禁止从商店购买
+                this.cancelDrag();
+                return false;
+            }
+            if (targetPin) {
+                if (targetPin.isEmpty()) {
+                    // 拖拽到空点位 → 购买放置
+                    if (game.shop.canAfford(source.pieceType)) {
+                        game.shop.gold -= source.pieceType.price;
+                        targetPin.placePiece(source.pieceType);
+                        result = true;
+                    }
+                } else {
+                    // 拖拽到已有棋子点位 → 尝试升级（购买+合并）
+                    const targetPiece = targetPin.chessPiece;
+                    if (targetPiece.type === source.pieceType &&
+                        targetPiece.level === 1 &&
+                        targetPiece.level < 5 &&
+                        game.shop.canAfford(source.pieceType)) {
+                        game.shop.gold -= source.pieceType.price;
+                        targetPiece.level += 1;
+                        result = true;
+                    }
+                }
+            }
+        } else if (source.type === 'pin') {
+            // 从点位拖拽
+            const sourcePin = source.pin;
+            if (!sourcePin || sourcePin.isEmpty()) {
+                this.cancelDrag();
+                return false;
+            }
+
+            if (isShopArea) {
+                // 拖拽到商店区域 → 卖出
+                if (isShopPhase) {
+                    const piece = sourcePin.chessPiece;
+                    game.shop.sellPiece(piece.type, piece.level);
+                    sourcePin.removePiece();
+                    result = true;
+                }
+                // 战斗阶段禁止卖出，棋子回原位
+            } else if (targetPin) {
+                if (targetPin === sourcePin) {
+                    // 拖回原位，无操作
+                } else if (targetPin.isEmpty()) {
+                    // 拖拽到空点位 → 移动
+                    game.movePiece(sourcePin, targetPin);
+                    result = true;
+                } else {
+                    // 拖拽到已有棋子点位
+                    const sourcePiece = sourcePin.chessPiece;
+                    const targetPiece = targetPin.chessPiece;
+                    if (sourcePiece.type === targetPiece.type &&
+                        sourcePiece.level === targetPiece.level &&
+                        sourcePiece.level < 5) {
+                        // 同类型同等级 → 升级（两个阶段都允许）
+                        targetPiece.level += 1;
+                        sourcePin.chessPiece = null;
+                        result = true;
+                    } else {
+                        // 不同类型或不同等级 → 交换位置
+                        game.swapPieces(sourcePin, targetPin);
+                        result = true;
+                    }
+                }
+            }
+        }
+
+        this.isDragging = false;
+        this.dragSource = null;
+        this.dragPreviewPos = null;
+        return result;
+    }
+
+    cancelDrag() {
+        this.isDragging = false;
+        this.dragSource = null;
+        this.dragPreviewPos = null;
+    }
+}
+
+// ============================================================
 // Game 游戏主控制器
 // ============================================================
 class Game {
@@ -1086,6 +1279,7 @@ class Game {
         this.shop = new Shop(50);
         this._mousePos = null;
         this.movingPiece = null;
+        this.dragManager = new DragManager(this);
         this.waveManager = new WaveManager(WAVE_CONFIGS);
         this.waveManager.onClearBattlefield = () => {
             this.balls = [];
@@ -1105,6 +1299,7 @@ class Game {
         this.breaches = 0;
         this.gameWon = false;
         this.movingPiece = null;
+        if (this.dragManager) this.dragManager.cancelDrag();
 
         // 重新初始化波次管理器（确保使用最新配置）
         this.waveManager = new WaveManager(WAVE_CONFIGS);
@@ -1180,6 +1375,15 @@ class Game {
         return true;
     }
 
+    swapPieces(pinA, pinB) {
+        const pieceA = pinA.chessPiece;
+        const pieceB = pinB.chessPiece;
+        pinA.chessPiece = pieceB;
+        pinB.chessPiece = pieceA;
+        if (pieceA) pieceA.pinPoint = pinB;
+        if (pieceB) pieceB.pinPoint = pinA;
+    }
+
     start() {
         this.status = 'running';
         this.lastTime = performance.now();
@@ -1207,6 +1411,7 @@ class Game {
         this.init();
         this.selectionPanel = null;
         this.movingPiece = null;
+        if (this.dragManager) this.dragManager.cancelDrag();
         this.gameWon = false;
         this.render();
         this._updateUI();
@@ -1348,7 +1553,12 @@ class Game {
         this.renderer.drawBoard();
 
         for (const pin of this.pinPoints) {
-            this.renderer.drawPinPoint(pin, this.movingPiece === pin);
+            const isDragSource = this.dragManager.isDragging &&
+                this.dragManager.dragSource &&
+                this.dragManager.dragSource.type === 'pin' &&
+                this.dragManager.dragSource.pin === pin;
+            const isDragTarget = this.dragManager.isDragging && pin.isEmpty();
+            this.renderer.drawPinPoint(pin, isDragSource || this.movingPiece === pin, isDragTarget);
         }
 
         for (const ball of this.balls) {
@@ -1367,7 +1577,7 @@ class Game {
             this.renderer.drawProjectile(p);
         }
 
-        // 棋子选择面板
+        // 棋子选择面板（保留兼容）
         if (this.selectionPanel) {
             this.renderer.drawSelectionPanel(this.selectionPanel);
         }
@@ -1382,40 +1592,9 @@ class Game {
             this.renderer.drawWaveInfo(this.waveManager, this.enemies);
         }
 
-        // 待放置棋子跟随鼠标提示
-        if (this.shop.selectedPiece && this._mousePos) {
-            const ctx = this.ctx;
-            ctx.globalAlpha = 0.5;
-            ctx.beginPath();
-            ctx.arc(this._mousePos.x, this._mousePos.y, 10, 0, Math.PI * 2);
-            ctx.fillStyle = this.shop.selectedPiece.color;
-            ctx.fill();
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            ctx.globalAlpha = 1.0;
-        }
-
-        // 战斗阶段选中棋子后，鼠标悬停在空点位上时显示半透明棋子预览
-        if (this.movingPiece && !this.movingPiece.isEmpty() && this._mousePos && this.waveManager.phase === 'combat') {
-            for (const pin of this.pinPoints) {
-                if (!pin.isEmpty()) continue;
-                const dx = this._mousePos.x - pin.x;
-                const dy = this._mousePos.y - pin.y;
-                if (dx * dx + dy * dy <= (pin.radius + 6) * (pin.radius + 6)) {
-                    const ctx = this.ctx;
-                    ctx.globalAlpha = 0.4;
-                    ctx.beginPath();
-                    ctx.arc(pin.x, pin.y, pin.radius, 0, Math.PI * 2);
-                    ctx.fillStyle = this.movingPiece.chessPiece.type.color;
-                    ctx.fill();
-                    ctx.strokeStyle = '#fff';
-                    ctx.lineWidth = 2;
-                    ctx.stroke();
-                    ctx.globalAlpha = 1.0;
-                    break;
-                }
-            }
+        // 拖拽预览
+        if (this.dragManager.isDragging) {
+            this.renderer.drawDragPreview(this.dragManager);
         }
 
         // 暂停遮罩
@@ -1533,125 +1712,97 @@ canvas.addEventListener('click', (e) => {
 
     const isShopPhase = game.waveManager && game.waveManager.phase === 'shop';
 
-    // 1. 商店面板点击（仅购买摆放阶段）
-    if (isShopPhase && game.renderer._shopButtons) {
-        // 检查"开始战斗"按钮
+    // 商店面板 "开始战斗" 按钮（仅购买摆放阶段，且不在拖拽中）
+    if (isShopPhase && !game.dragManager.isDragging && game.renderer._startCombatBtn) {
         const sb = game.renderer._startCombatBtn;
-        if (sb && mx >= sb.x && mx <= sb.x + sb.w && my >= sb.y && my <= sb.y + sb.h) {
+        if (mx >= sb.x && mx <= sb.x + sb.w && my >= sb.y && my <= sb.y + sb.h) {
             game.shop.clearSelection();
             game.selectionPanel = null;
             game.waveManager.startCombatPhase();
             return;
         }
-
-        // 检查商店棋子按钮
-        for (const btn of game.renderer._shopButtons) {
-            if (mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h) {
-                if (btn.affordable) {
-                    game.shop.buyPiece(btn.type);
-                    game.selectionPanel = null; // 关闭旧面板
-                }
-                if (game.status === 'paused') game.render();
-                return;
-            }
-        }
-    }
-
-    // 2. 如果有待放置棋子，点击空点位放置
-    if (isShopPhase && game.shop.selectedPiece) {
-        for (const pin of game.pinPoints) {
-            const dx = mx - pin.x;
-            const dy = my - pin.y;
-            if (dx * dx + dy * dy <= (pin.radius + 6) * (pin.radius + 6)) {
-                if (pin.isEmpty()) {
-                    pin.placePiece(game.shop.selectedPiece);
-                    game.shop.clearSelection();
-                } else {
-                    // 点击已有棋子的点位 → 移除并退还
-                    const oldType = pin.chessPiece.type;
-                    pin.removePiece();
-                    game.shop.refundPiece(oldType);
-                }
-                if (game.status === 'paused') game.render();
-                return;
-            }
-        }
-        // 点击空白区域取消选择（退还金币）
-        game.shop.refundPiece(game.shop.selectedPiece);
-        game.shop.clearSelection();
-        if (game.status === 'paused') game.render();
-        return;
-    }
-
-    // 3. 购买摆放阶段无待放置棋子时，点击已有棋子点位移除并退还
-    if (isShopPhase) {
-        for (const pin of game.pinPoints) {
-            const dx = mx - pin.x;
-            const dy = my - pin.y;
-            if (dx * dx + dy * dy <= (pin.radius + 6) * (pin.radius + 6)) {
-                if (!pin.isEmpty()) {
-                    const oldType = pin.chessPiece.type;
-                    pin.removePiece();
-                    game.shop.refundPiece(oldType);
-                }
-                if (game.status === 'paused') game.render();
-                return;
-            }
-        }
-    }
-
-    // 4. 战斗阶段棋子移动逻辑
-    if (!isShopPhase && game.waveManager && game.waveManager.phase === 'combat') {
-        for (const pin of game.pinPoints) {
-            const dx = mx - pin.x;
-            const dy = my - pin.y;
-            if (dx * dx + dy * dy <= (pin.radius + 6) * (pin.radius + 6)) {
-                if (game.movingPiece) {
-                    if (pin === game.movingPiece) {
-                        // 再次点击同一棋子，取消选择
-                        game.movingPiece = null;
-                    } else if (pin.isEmpty()) {
-                        // 点击空点位，执行移动
-                        game.movePiece(game.movingPiece, pin);
-                        game.movingPiece = null;
-                    } else {
-                        // 点击另一个有棋子的点位，切换选择
-                        game.movingPiece = pin;
-                    }
-                } else if (!pin.isEmpty()) {
-                    // 选中棋子准备移动
-                    game.movingPiece = pin;
-                }
-                return;
-            }
-        }
-        // 点击空白区域取消选择
-        game.movingPiece = null;
-        return;
-    }
-
-    // 5. 旧的选择面板逻辑（战斗阶段中仍可查看，但不可操作商店）
-    if (game.selectionPanel && game.selectionPanel.buttons) {
-        for (const btn of game.selectionPanel.buttons) {
-            if (mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h) {
-                // 战斗阶段禁止放置
-                if (!isShopPhase) return;
-                game.selectionPanel.pin.placePiece(btn.type);
-                game.selectionPanel = null;
-                if (game.status === 'paused') game.render();
-                return;
-            }
-        }
-        game.selectionPanel = null;
-        if (game.status === 'paused') game.render();
-        return;
     }
 });
 
-// 鼠标移动跟踪（用于待放置棋子预览）
+// 拖拽交互：mousedown/mousemove/mouseup
+canvas.addEventListener('mousedown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    const isShopPhase = game.waveManager && game.waveManager.phase === 'shop';
+
+    // 检查"开始战斗"按钮（不启动拖拽）
+    if (isShopPhase && game.renderer._startCombatBtn) {
+        const sb = game.renderer._startCombatBtn;
+        if (mx >= sb.x && mx <= sb.x + sb.w && my >= sb.y && my <= sb.y + sb.h) {
+            return; // 由 click 事件处理
+        }
+    }
+
+    // 检查商店棋子按钮 → 开始从商店拖拽
+    if (isShopPhase && game.renderer._shopButtons) {
+        for (const btn of game.renderer._shopButtons) {
+            if (mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h) {
+                if (btn.affordable) {
+                    game.dragManager.startDragFromShop(btn.type);
+                    game.dragManager.updateDragPosition(mx, my);
+                }
+                return;
+            }
+        }
+    }
+
+    // 检查点位棋子 → 开始从点位拖拽
+    for (const pin of game.pinPoints) {
+        const dx = mx - pin.x;
+        const dy = my - pin.y;
+        if (dx * dx + dy * dy <= (pin.radius + 6) * (pin.radius + 6)) {
+            if (!pin.isEmpty()) {
+                game.dragManager.startDragFromPin(pin);
+                game.dragManager.updateDragPosition(mx, my);
+            }
+            return;
+        }
+    }
+});
+
 canvas.addEventListener('mousemove', (e) => {
     const rect = canvas.getBoundingClientRect();
-    game._mousePos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    game._mousePos = { x: mx, y: my };
+
+    if (game.dragManager.isDragging) {
+        game.dragManager.updateDragPosition(mx, my);
+    }
+});
+
+canvas.addEventListener('mouseup', (e) => {
+    if (!game.dragManager.isDragging) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    // 判断是否在商店区域释放
+    const shopPanelW = 160;
+    const shopPanelX = BoardConfig.width - shopPanelW - 4;
+    const isShopPhase = game.waveManager && game.waveManager.phase === 'shop';
+    const isInShopArea = isShopPhase && mx >= shopPanelX && mx <= BoardConfig.width && my >= 4 && my <= 300;
+
+    // 查找目标点位
+    let targetPin = null;
+    for (const pin of game.pinPoints) {
+        const dx = mx - pin.x;
+        const dy = my - pin.y;
+        if (dx * dx + dy * dy <= (pin.radius + 6) * (pin.radius + 6)) {
+            targetPin = pin;
+            break;
+        }
+    }
+
+    game.dragManager.endDrag(targetPin, isInShopArea);
 });
 
 </script>

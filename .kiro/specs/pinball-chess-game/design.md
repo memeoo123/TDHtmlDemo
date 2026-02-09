@@ -22,9 +22,90 @@ initial-layout.js       — 初始棋子布局覆盖
 - 购买摆放阶段：仅商店交互和棋子放置，不执行物理和战斗
 - 战斗阶段：物理运动、碰撞检测、棋子发射、战斗判定、波次完成检测
 
+## 未完成设计：拖拽交互系统
+
+### 概述
+
+游戏的核心交互从点击模式改为拖拽模式。所有棋子操作（购买、放置、移动、升级、卖出）统一通过拖拽完成。
+
+### 拖拽来源与目标
+
+| 拖拽来源 | 拖拽目标 | 整备阶段行为 | 战斗阶段行为 |
+|----------|----------|-------------|-------------|
+| 商店棋子 | 空点位 | 购买并放置（扣金币） | 禁止 |
+| 商店棋子 | 已有棋子点位 | 同类型同等级→升级（扣金币），否则→取消 | 禁止 |
+| 点位棋子 | 空点位 | 移动 | 移动 |
+| 点位棋子 | 已有棋子点位 | 同类型同等级→升级，否则→交换位置 | 同类型同等级→升级，否则→交换位置 |
+| 点位棋子 | 商店区域 | 卖出（退还半价） | 禁止（棋子回原位） |
+
+### 拖拽状态机
+
+```
+空闲 → mousedown 在商店棋子上 → 拖拽商店棋子状态
+空闲 → mousedown 在点位棋子上 → 拖拽点位棋子状态
+拖拽中 → mousemove → 更新预览位置
+拖拽中 → mouseup 在有效目标上 → 执行操作，回到空闲
+拖拽中 → mouseup 在无效区域 → 取消，回到空闲
+```
+
+### DragManager 类
+
+```javascript
+class DragManager {
+    constructor(game)
+    dragSource       // 拖拽来源：{ type: 'shop'|'pin', pieceType?, pin? }
+    isDragging       // 是否正在拖拽
+    dragPreviewPos   // 拖拽预览位置 { x, y }
+
+    startDragFromShop(pieceType)  // 从商店开始拖拽
+    startDragFromPin(pin)         // 从点位开始拖拽
+    updateDragPosition(x, y)     // 更新拖拽位置
+    endDrag(targetPin, isShopArea) // 结束拖拽，执行对应操作
+    cancelDrag()                  // 取消拖拽
+}
+```
+
+### 卖出价格计算
+
+棋子卖出价格 = 生成该等级棋子所需的基础棋子总数 × 单价 / 2
+
+```javascript
+// 计算棋子总价值（合成所需的基础棋子数量 × 单价）
+static getTotalValue(pieceType, level) {
+    const baseCount = Math.pow(2, level - 1); // Lv.1=1, Lv.2=2, Lv.3=4, Lv.4=8, Lv.5=16
+    return baseCount * pieceType.price;
+}
+
+// 卖出价格 = 总价值 / 2
+static getSellPrice(pieceType, level) {
+    return Math.floor(ChessPiece.getTotalValue(pieceType, level) / 2);
+}
+```
+
+| 等级 | 基础棋子数 | 总价值 | 卖出价格 |
+|------|-----------|--------|---------|
+| 1 | 1 | 1×price | 0.5×price |
+| 2 | 2 | 2×price | 1×price |
+| 3 | 4 | 4×price | 2×price |
+| 4 | 8 | 8×price | 4×price |
+| 5 | 16 | 16×price | 8×price |
+
+### 交换位置逻辑
+
+```javascript
+swapPieces(pinA, pinB) {
+    const pieceA = pinA.chessPiece;
+    const pieceB = pinB.chessPiece;
+    pinA.chessPiece = pieceB;
+    pinB.chessPiece = pieceA;
+    if (pieceA) pieceA.pinPoint = pinB;
+    if (pieceB) pieceB.pinPoint = pinA;
+}
+```
+
 ## 未完成设计：战斗阶段棋子移动机制
 
-在战斗阶段，玩家可将已放置的棋子从一个点位移动到另一个空点位。
+> 注意：战斗阶段的棋子移动现在通过拖拽系统实现（见上方拖拽交互系统设计）。以下保留原有的 movePiece 方法作为底层实现。
 
 ### 移动逻辑
 
@@ -42,19 +123,10 @@ movePiece(sourcePin, targetPin) {
 
 ### 移动约束
 
-- 仅战斗阶段允许移动
-- 源点位必须有棋子，目标点位必须为空
+- 两个阶段均允许移动和交换
+- 源点位必须有棋子
+- 目标为空点位时移动，目标有棋子时判断升级或交换
 - 不消耗金币，不重置发射计时器，类型不变
-
-### 交互流程
-
-```
-空闲 → 点击已放置棋子 → 已选中（高亮）
-已选中 → 点击空点位 → 移动成功，回到空闲
-已选中 → 点击空白区域 → 取消选择
-已选中 → 点击另一个棋子 → 切换选择
-已选中 → 再次点击同一棋子 → 取消选择
-```
 
 ## 未完成设计：棋子升级系统
 
@@ -205,7 +277,17 @@ mergePieces(sourcePin, targetPin) {
 
 ### 退还价格规则
 
-移除已升级棋子时，仅退还该棋子类型的单个基础价格（`type.price`），不退还被合并消耗的棋子价值。这保持了现有 `Shop.refundPiece(pieceType)` 的逻辑不变。
+卖出棋子时退还该棋子总价值的一半。总价值 = 合成该等级所需的基础棋子数量 × 单价。
+
+```javascript
+// Lv.1 卖出 = 0.5×price, Lv.2 = 1×price, Lv.3 = 2×price, Lv.4 = 4×price, Lv.5 = 8×price
+static getSellPrice(pieceType, level) {
+    const baseCount = Math.pow(2, level - 1);
+    return Math.floor(baseCount * pieceType.price / 2);
+}
+```
+
+此方法替代原有的 `Shop.refundPiece(pieceType)` 逻辑，改为 `Shop.sellPiece(pieceType, level)`。
 
 ### 视觉表现
 
@@ -253,9 +335,25 @@ mergePieces(sourcePin, targetPin) {
 *对于任意*处于战斗阶段的游戏状态和任意两个相同类型相同等级的棋子，执行合并操作应被拒绝，两个棋子的状态保持不变。
 **Validates: Requirements 15.7**
 
-### Property 41: 移除升级棋子退还基础价格
-*对于任意*棋子类型和任意等级 L（1-5），移除该棋子后退还的金币应等于该类型的单个基础价格（type.price），与等级无关。
-**Validates: Requirements 15.9**
+### Property 41: 卖出棋子退还总价值一半
+*对于任意*棋子类型和任意等级 L（1-5），卖出该棋子后退还的金币应等于 `floor(2^(L-1) × type.price / 2)`。
+**Validates: Requirements 3.6, 3.9**
+
+### Property 42: 拖拽商店棋子到空点位完成购买
+*对于任意*棋子类型和充足的金币数量，从商店拖拽棋子到空点位后，该点位应持有对应类型的 Lv.1 棋子，金币应减少 type.price。
+**Validates: Requirements 3.1**
+
+### Property 43: 拖拽点位棋子到已有棋子点位交换位置
+*对于任意*两个不同类型或不同等级的棋子分别在点位 A 和点位 B 上，拖拽 A 到 B 后，A 点位应持有原 B 的棋子，B 点位应持有原 A 的棋子。
+**Validates: Requirements 3.5**
+
+### Property 44: 战斗阶段禁止卖出
+*对于任意*处于战斗阶段的游戏状态和任意已放置棋子的点位，执行卖出操作后，该点位的棋子状态和金币数量应保持不变。
+**Validates: Requirements 3.7**
+
+### Property 45: 金币不足时拒绝购买
+*对于任意*棋子类型和不足的金币数量（gold < type.price），从商店拖拽棋子到空点位后，该点位应保持为空，金币数量不变。
+**Validates: Requirements 3.2**
 
 ## 错误处理
 
