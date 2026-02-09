@@ -12,7 +12,7 @@ const COMBAT_BEHAVIORS = {
      */
     melee: {
         /**
-         * 移动逻辑：无目标时沿 direction 方向移动
+         * 移动逻辑：无目标或目标不在接触距离内时沿 direction 方向移动
          * @param {object} unit - Soldier 或 Enemy 实例
          * @param {number} dt - 帧间隔（未使用，保留接口一致性）
          */
@@ -20,6 +20,12 @@ const COMBAT_BEHAVIORS = {
             if (!unit.target || !unit.target.alive) {
                 unit.x += unit.speed * unit.direction;
                 unit.target = null;
+            } else {
+                // 有目标但未进入接触距离时继续移动
+                const meleeRange = (typeof Combat !== 'undefined') ? Combat.MELEE_RANGE : 16;
+                if (Math.abs(unit.x - unit.target.x) >= meleeRange) {
+                    unit.x += unit.speed * unit.direction;
+                }
             }
         },
 
