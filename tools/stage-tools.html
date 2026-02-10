@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>关卡配置工具 - 生成 & 心流验证</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; background: #1a1a2e; color: #e0e0e0; padding: 20px; }
+h1 { text-align: center; color: #e94560; margin-bottom: 8px; font-size: 24px; }
+.subtitle { text-align: center; color: #888; margin-bottom: 20px; font-size: 13px; }
+.container { max-width: 1200px; margin: 0 auto; }
+.panel { background: #16213e; border-radius: 10px; padding: 20px; margin-bottom: 16px; border: 1px solid #0f3460; }
+.panel h2 { color: #e94560; margin-bottom: 12px; font-size: 17px; }
+.row { display: flex; gap: 16px; flex-wrap: wrap; }
+.col { flex: 1; min-width: 300px; }
+label { display: block; color: #aaa; font-size: 12px; margin-bottom: 3px; margin-top: 8px; }
+input, select { background: #0f3460; border: 1px solid #333; color: #e0e0e0; padding: 6px 10px; border-radius: 5px; width: 100%; font-size: 13px; }
+input:focus, select:focus { outline: none; border-color: #e94560; }
+.btn { display: inline-block; padding: 10px 24px; border: none; border-radius: 6px; cursor: pointer;
+       font-size: 14px; font-weight: bold; margin: 4px; transition: all 0.2s; }
+.btn-primary { background: #e94560; color: #fff; }
+.btn-primary:hover { background: #c73e54; }
+.btn-secondary { background: #0f3460; color: #e0e0e0; border: 1px solid #e94560; }
+.btn-secondary:hover { background: #1a4a8a; }
+.btn-success { background: #2ecc71; color: #fff; }
+.btn-success:hover { background: #27ae60; }
+.actions { margin-top: 14px; text-align: center; }
+#output { background: #0d1b2a; border: 1px solid #333; border-radius: 8px; padding: 16px;
+          font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; white-space: pre-wrap;
+          max-height: 500px; overflow-y: auto; line-height: 1.6; }
+textarea { background: #0f3460; border: 1px solid #333; color: #e0e0e0; padding: 10px; border-radius: 5px;
+           width: 100%; font-family: 'Consolas', monospace; font-size: 12px; resize: vertical; }
+textarea:focus { outline: none; border-color: #e94560; }
+.tag { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: bold; margin-right: 4px; }
+.tag-pass { background: #1a4731; color: #2ecc71; }
+.tag-warn { background: #4a3a10; color: #f39c12; }
+.tag-fail { background: #4a1a1a; color: #e74c3c; }
+.summary-box { display: inline-block; padding: 8px 16px; border-radius: 6px; margin: 4px; font-size: 13px; }
+.summary-pass { background: #1a4731; border: 1px solid #2ecc71; }
+.summary-warn { background: #4a3a10; border: 1px solid #f39c12; }
+.summary-fail { background: #4a1a1a; border: 1px solid #e74c3c; }
+</style>
+</head>
+<body>
+
+<!-- 引入游戏配置 -->
+<script src="../piece-config.js"></script>
+<script src="../enemy-config.js"></script>
+<script src="../board-config.js"></script>
+
+<div class="container">
+<h1>🎮 关卡配置工具</h1>
+<p class="subtitle">生成平衡关卡 → 心流验证 → 复制到 stages-config.js</p>
+</div>
+
+<div class="container">
+
+<!-- 生成器面板 -->
+<div class="panel">
+  <h2>⚙️ 关卡生成器</h2>
+  <div class="row">
+    <div class="col">
+      <label>关卡数量</label>
+      <input type="number" id="stageCount" value="4" min="1" max="10">
+    </div>
+    <div class="col">
+      <label>基础难度系数 (0.5=简单, 1.0=标准, 1.5=困难)</label>
+      <input type="number" id="baseDifficulty" value="1.0" min="0.3" max="2.0" step="0.1">
+    </div>
+    <div class="col">
+      <label>每关波次增长</label>
+      <input type="number" id="wavesPerStage" value="1" min="0" max="3">
+      <span style="color:#666;font-size:11px">第1关基础4波，每关多N波</span>
+    </div>
+  </div>
+  <div class="actions">
+    <button class="btn btn-primary" onclick="generateStages()">🎲 生成关卡</button>
+    <button class="btn btn-secondary" onclick="validateStages()">🔍 心流验证</button>
+    <button class="btn btn-success" onclick="exportConfig()">📋 复制配置代码</button>
+  </div>
+</div>
+
+<!-- 输出面板 -->
+<div class="panel">
+  <h2>📊 输出</h2>
+  <div id="output" style="min-height:200px;">点击「生成关卡」开始...</div>
+</div>
+
+<!-- 配置预览 -->
+<div class="panel">
+  <h2>📝 生成的 stages-config.js 内容</h2>
+  <textarea id="configPreview" rows="20" readonly placeholder="生成后这里会显示完整的配置代码，可直接复制到 stages-config.js"></textarea>
+</div>
+
+</div>
+
+<script>
+// ============================================================
+// 配置数据（从外部 JS 文件加载）
+// ============================================================
+const PIECES = (typeof PIECE_CONFIG_EXTERNAL !== 'undefined') ? PIECE_CONFIG_EXTERNAL : {};
+const ENEMIES = (typeof ENEMY_CONFIG_EXTERNAL !== 'undefined') ? ENEMY_CONFIG_EXTERNAL : {};
+const BOARD = (typeof BOARD_CONFIG_EXTERNAL !== 'undefined') ? BOARD_CONFIG_EXTERNAL : {
+    width:600, height:700, pinballAreaHeight:500, groundAreaHeight:200, groundY:500,
+    pinRows:9, pinCols:8, pinSpacingX:75, pinSpacingY:35, pinStartX:45, pinStartY:60, wallThickness:10
+};
+
+// 当前生成的关卡数据
+let currentStages = [];
+
+// ============================================================
+// 战力计算
+// ============================================================
+function enemyPower(e) {
+    return e.hp * e.attack * (1 + e.speed * 0.2);
+}
+function piecePower(p) {
+    return p.soldierHP * p.soldierAttack * (1 + p.soldierSpeed * 0.2);
+}
+
+// 敌人按战力排序
+const enemyList = Object.entries(ENEMIES)
+    .map(([key, val]) => ({ key, ...val, power: enemyPower(val) }))
+    .sort((a, b) => a.power - b.power);
+
+// 棋子按价格排序
+const pieceList = Object.entries(PIECES)
+    .map(([key, val]) => ({ key, ...val, power: piecePower(val), eff: piecePower(val) / val.price }))
+    .sort((a, b) => a.price - b.price);
+
+const cheapestPrice = pieceList.length > 0 ? pieceList[0].price : 10;
+const avgPiecePower = pieceList.length > 0
+    ? pieceList.reduce((s, p) => s + p.power, 0) / pieceList.length : 10;
+
+// ============================================================
+// 关卡生成器
+// ============================================================
+function generateStages() {
+    const out = document.getElementById('output');
+    const count = parseInt(document.getElementById('stageCount').value) || 4;
+    const baseDiff = parseFloat(document.getElementById('baseDifficulty').value) || 1.0;
+    const wavesGrowth = parseInt(document.getElementById('wavesPerStage').value) || 1;
+
+    const templates = [
+        { name: '新手试炼',   diff: 0.8,  board: {} },
+        { name: '密林伏击',   diff: 1.0,  board: { pinRows:7, pinCols:6, pinSpacingX:90, pinSpacingY:50, pinStartX:60, pinStartY:70 } },
+        { name: '烈焰熔炉',   diff: 1.1,  board: { pinRows:10, pinCols:9, pinSpacingX:65, pinSpacingY:32, pinStartX:35, pinStartY:55 } },
+        { name: '暗影要塞',   diff: 1.25, board: { pinRows:8, pinCols:7, pinSpacingX:80, pinSpacingY:40, pinStartX:50, pinStartY:65 } },
+        { name: '天空之城',   diff: 1.4,  board: { pinRows:11, pinCols:10, pinSpacingX:58, pinSpacingY:30, pinStartX:30, pinStartY:50 } },
+        { name: '终焉之战',   diff: 1.6,  board: {} },
+        { name: '深渊裂隙',   diff: 1.8,  board: { pinRows:8, pinCols:7, pinSpacingX:80, pinSpacingY:40, pinStartX:50, pinStartY:65 } },
+        { name: '龙巢禁地',   diff: 2.0,  board: { pinRows:10, pinCols:9, pinSpacingX:65, pinSpacingY:32, pinStartX:35, pinStartY:55 } },
+        { name: '虚空风暴',   diff: 2.2,  board: { pinRows:9, pinCols:8, pinSpacingX:75, pinSpacingY:35, pinStartX:45, pinStartY:60 } },
+        { name: '诸神黄昏',   diff: 2.5,  board: {} },
+    ];
+
+    currentStages = [];
+    let lines = [];
+    lines.push('🎲 开始生成关卡...\n');
+
+    for (let i = 0; i < count; i++) {
+        const t = templates[i % templates.length];
+        const waveCount = 4 + i * wavesGrowth;
+        const diffMult = t.diff * baseDiff;
+        const stage = buildStage(i + 1, t.name, diffMult, waveCount, t.board);
+        currentStages.push(stage);
+
+        const totalEnemies = stage.waveConfig.reduce((s, w) => s + w.enemies.reduce((s2, e) => s2 + e.count, 0), 0);
+        lines.push(`  关卡 ${stage.id}: ${stage.name}  |  ${waveCount}波  |  ${totalEnemies}敌人  |  初始金币 ${stage.initialGold}`);
+    }
+
+    lines.push('\n✅ 生成完成！点击「心流验证」检查平衡性，或「复制配置代码」导出。');
+    out.textContent = lines.join('\n');
+    updatePreview();
+}
+
+function buildStage(id, name, diffMult, waveCount, boardVariant) {
+    // 初始金币：难度越高给越少
+    const initialPieceCount = Math.max(2, Math.round(4 / diffMult));
+    const initialGold = Math.round(cheapestPrice * initialPieceCount);
+
+    // 第一波基础战力：用中位敌人战力 × 数量 × 难度
+    const medianEnemy = enemyList[Math.floor(enemyList.length / 2)] || enemyList[0];
+    const basePower = (medianEnemy ? medianEnemy.power : 10) * 5 * diffMult;
+    // 增长率
+    const growthRate = 1.35 + (id - 1) * 0.04;
+
+    const waves = [];
+    for (let w = 1; w <= waveCount; w++) {
+        const wavePower = basePower * Math.pow(growthRate, w - 1);
+
+        // 选敌人池：前30%用弱敌，中间用中等，后面全开
+        const tierSize = Math.ceil(enemyList.length / 3);
+        let pool;
+        if (w <= Math.ceil(waveCount * 0.3)) {
+            pool = enemyList.slice(0, Math.max(2, tierSize));
+        } else if (w <= Math.ceil(waveCount * 0.65)) {
+            pool = enemyList.slice(0, Math.max(3, tierSize * 2));
+        } else {
+            pool = enemyList;
+        }
+
+        const enemies = distributeEnemies(pool, wavePower, w, waveCount);
+        const spawnInterval = Math.max(1000, 3200 - (w - 1) * 250);
+
+        waves.push({ wave: w, enemies, spawnInterval });
+    }
+
+    return {
+        id,
+        name,
+        initialGold,
+        boardConfig: { ...BOARD, ...boardVariant },
+        waveConfig: waves
+    };
+}
+
+function distributeEnemies(pool, targetPower, waveNum, totalWaves) {
+    const result = [];
+    let remaining = targetPower;
+
+    // 选 2~4 种敌人
+    const typeCount = Math.min(pool.length, 2 + Math.floor(waveNum / 3));
+    const step = Math.max(1, Math.floor(pool.length / typeCount));
+    const selected = [];
+    for (let i = 0; i < typeCount && i * step < pool.length; i++) {
+        selected.push(pool[Math.min(i * step, pool.length - 1)]);
+    }
+
+    for (let i = 0; i < selected.length; i++) {
+        const e = selected[i];
+        const isLast = (i === selected.length - 1);
+        const share = isLast ? remaining : remaining * (0.35 + Math.random() * 0.25);
+        const count = Math.max(1, Math.round(share / e.power));
+        result.push({ type: e.key, count });
+        remaining -= count * e.power;
+        if (remaining <= 0) break;
+    }
+
+    return result;
+}
+
+// ============================================================
+// 心流验证器
+// ============================================================
+function validateStages() {
+    const out = document.getElementById('output');
+    if (currentStages.length === 0) {
+        out.innerHTML = '<span style="color:#e74c3c">请先生成关卡！</span>';
+        return;
+    }
+
+    const THRESH = {
+        maxSurge: 0.80,       // 相邻波战力暴涨上限
+        minGrowth: 0.05,      // 相邻波战力停滞下限
+        ratioMin: 0.8,        // 玩家/敌人战力比下限（低于此=太难）
+        ratioMax: 1.6,        // 玩家/敌人战力比上限（高于此=太简单）
+        minInitPieces: 2,     // 初始金币至少买几个棋子
+        minLateNewTypes: 1,   // 后半段至少引入几种新敌人
+    };
+
+    let html = [];
+    let totalFails = 0, totalWarns = 0, totalPass = 0;
+
+    html.push('🔍 <b>关卡平衡性验证报告</b>\n' + '═'.repeat(55) + '\n');
+
+    for (const stage of currentStages) {
+        html.push(`\n📋 <b>关卡 ${stage.id}: ${stage.name}</b>  (${stage.waveConfig.length}波, 初始金币${stage.initialGold})`);
+        html.push('─'.repeat(50));
+
+        const issues = checkStage(stage, THRESH);
+        for (const iss of issues) {
+            if (iss.level === 'PASS') { totalPass++; html.push(`  <span class="tag tag-pass">PASS</span> ${iss.msg}`); }
+            else if (iss.level === 'WARN') { totalWarns++; html.push(`  <span class="tag tag-warn">WARN</span> ${iss.msg}`); }
+            else { totalFails++; html.push(`  <span class="tag tag-fail">FAIL</span> ${iss.msg}`); }
+        }
+
+        // 战力曲线
+        const powers = stage.waveConfig.map(w => waveTotalPower(w));
+        const maxP = Math.max(...powers);
+        html.push('\n  📊 战力曲线:');
+        for (let i = 0; i < powers.length; i++) {
+            const barLen = Math.round((powers[i] / maxP) * 30);
+            const bar = '<span class="bar-fill">' + '█'.repeat(barLen) + '</span><span class="bar-empty">' + '░'.repeat(30 - barLen) + '</span>';
+            html.push(`    W${String(i+1).padStart(2,' ')} ${bar} ${powers[i].toFixed(0)}`);
+        }
+        html.push('');
+    }
+
+    html.push('═'.repeat(55));
+    if (totalFails > 0) {
+        html.push(`<span class="tag tag-fail">结果</span> 发现 <b>${totalFails}</b> 个严重问题，<b>${totalWarns}</b> 个警告`);
+        html.push('💡 建议调整参数后重新生成');
+    } else if (totalWarns > 0) {
+        html.push(`<span class="tag tag-warn">结果</span> 通过，但有 <b>${totalWarns}</b> 个警告可优化`);
+    } else {
+        html.push(`<span class="tag tag-pass">结果</span> ✅ 所有关卡平衡性检查通过！心流体验良好`);
+    }
+
+    out.innerHTML = html.join('\n');
+}
+
+function waveTotalPower(wave) {
+    let total = 0;
+    for (const eg of wave.enemies) {
+        const eType = ENEMIES[eg.type];
+        if (!eType) continue;
+        total += enemyPower(eType) * eg.count;
+    }
+    return total;
+}
+
+function waveKillGold(wave) {
+    let total = 0;
+    for (const eg of wave.enemies) {
+        const eType = ENEMIES[eg.type];
+        if (!eType) continue;
+        total += (eType.score || 0) * eg.count;
+    }
+    return total;
+}
+
+/**
+ * 估算玩家一波的总战力（更保守的模型）
+ * 
+ * 核心假设：
+ * - 一波战斗持续约 20~30 秒
+ * - 每个棋子按 fireInterval 产出士兵，但弹球需要时间落地（约 3~5 秒延迟）
+ * - 士兵存活时间有限（被敌人击杀），不是所有士兵都能同时存在
+ * - 实际有效士兵数 ≈ 棋子数 × 每棋子产出 × 存活率
+ * - 存活率受敌人攻击力影响，大约 0.4~0.7
+ */
+function estimatePlayerPower(gold, ownedPieces) {
+    const sorted = [...pieceList].sort((a, b) => b.eff - a.eff);
+    let rem = gold, bought = 0;
+    let boughtPower = 0;
+    for (const p of sorted) {
+        while (rem >= p.price) { rem -= p.price; boughtPower += p.power; bought++; }
+    }
+
+    // 每个棋子每波大约产出 2~3 个有效士兵（考虑发射间隔和弹球落地延迟）
+    const effectiveSoldiersPerPiece = 2.0;
+    // 士兵存活率（敌人会杀死一部分）
+    const survivalRate = 0.5;
+
+    const totalPieces = ownedPieces + bought;
+    const avgPow = totalPieces > 0
+        ? (ownedPieces * avgPiecePower + boughtPower) / totalPieces
+        : avgPiecePower;
+
+    const totalPower = totalPieces * avgPow * effectiveSoldiersPerPiece * survivalRate;
+    return { totalPower, bought };
+}
+
+function checkStage(stage, TH) {
+    const issues = [];
+    const waves = stage.waveConfig;
+    const initGold = stage.initialGold || 50;
+
+    // 1. 初始金币
+    const canBuy = Math.floor(initGold / cheapestPrice);
+    if (canBuy < TH.minInitPieces) {
+        issues.push({ level:'FAIL', msg:`初始金币 ${initGold} 只够买 ${canBuy} 个最便宜棋子(${cheapestPrice}金)，至少需要 ${TH.minInitPieces} 个` });
+    } else {
+        issues.push({ level:'PASS', msg:`初始金币 ${initGold}，可买 ${canBuy} 个基础棋子` });
+    }
+
+    // 2. 逐波战力递增
+    const powers = waves.map(w => waveTotalPower(w));
+    for (let i = 1; i < powers.length; i++) {
+        const growth = (powers[i] - powers[i-1]) / powers[i-1];
+        if (growth > TH.maxSurge) {
+            issues.push({ level:'WARN', msg:`第${i}→${i+1}波战力暴涨 ${(growth*100).toFixed(0)}%（${powers[i-1].toFixed(1)}→${powers[i].toFixed(1)}），建议<${(TH.maxSurge*100)}%` });
+        } else if (growth < TH.minGrowth) {
+            issues.push({ level:'WARN', msg:`第${i}→${i+1}波战力停滞 ${(growth*100).toFixed(0)}%（${powers[i-1].toFixed(1)}→${powers[i].toFixed(1)}），缺乏挑战感` });
+        }
+    }
+
+    // 3. 玩家战力 vs 敌人战力
+    let cumGold = initGold;
+    let owned = canBuy;
+    for (let i = 0; i < waves.length; i++) {
+        const ep = powers[i];
+        const pp = estimatePlayerPower(cumGold, i === 0 ? 0 : owned);
+        const ratio = pp.totalPower / ep;
+
+        if (ratio < TH.ratioMin) {
+            issues.push({ level:'FAIL', msg:`第${i+1}波玩家战力不足: 比值 ${ratio.toFixed(2)}（玩家${pp.totalPower.toFixed(1)} vs 敌人${ep.toFixed(1)}），几乎无法获胜` });
+        } else if (ratio > TH.ratioMax) {
+            issues.push({ level:'WARN', msg:`第${i+1}波太简单: 比值 ${ratio.toFixed(2)}（玩家${pp.totalPower.toFixed(1)} vs 敌人${ep.toFixed(1)}），缺乏挑战` });
+        } else {
+            issues.push({ level:'PASS', msg:`第${i+1}波平衡: 比值 ${ratio.toFixed(2)}（玩家${pp.totalPower.toFixed(1)} vs 敌人${ep.toFixed(1)}）` });
+        }
+
+        const killRate = Math.max(0.5, Math.min(0.95, ratio * 0.5));
+        cumGold = waveKillGold(waves[i]) * killRate;
+        owned += pp.bought;
+    }
+
+    // 4. 新鲜感
+    if (waves.length >= 4) {
+        const half = Math.ceil(waves.length / 2);
+        const firstTypes = new Set();
+        for (let i = 0; i < half; i++) waves[i].enemies.forEach(e => firstTypes.add(e.type));
+        let newCount = 0;
+        for (let i = half; i < waves.length; i++) waves[i].enemies.forEach(e => { if (!firstTypes.has(e.type)) newCount++; });
+        if (newCount < TH.minLateNewTypes) {
+            issues.push({ level:'WARN', msg:'后半段波次没有引入新敌人类型，玩家可能感到单调' });
+        } else {
+            issues.push({ level:'PASS', msg:`后半段引入了 ${newCount} 种新敌人类型，保持新鲜感` });
+        }
+    }
+
+    // 5. 难度曲线单调性
+    for (let i = 2; i < powers.length; i++) {
+        if (powers[i] < powers[i-1] * 0.95) {
+            issues.push({ level:'WARN', msg:`第${i+1}波战力(${powers[i].toFixed(1)})低于第${i}波(${powers[i-1].toFixed(1)})，难度回落` });
+        }
+    }
+
+    return issues;
+}
+
+// ============================================================
+// 导出
+// ============================================================
+function updatePreview() {
+    const ta = document.getElementById('configPreview');
+    if (currentStages.length === 0) { ta.value = ''; return; }
+    ta.value = '// 关卡配置 - 由 tools/stage-tools.html 自动生成\n'
+        + '// 修改此文件后刷新页面即可生效\n'
+        + 'const STAGES_CONFIG_EXTERNAL = '
+        + JSON.stringify(currentStages, null, 4) + ';\n';
+}
+
+function exportConfig() {
+    const ta = document.getElementById('configPreview');
+    if (!ta.value) {
+        alert('请先生成关卡！');
+        return;
+    }
+    ta.select();
+    document.execCommand('copy');
+    alert('已复制到剪贴板！粘贴到 stages-config.js 即可。');
+}
+</script>
+
+</body>
+</html>

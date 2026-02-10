@@ -34,6 +34,7 @@
         #btn-pause { background: #f0ad4e; color: #333; }
         #btn-resume { background: #5cb85c; color: #fff; }
         #btn-reset { background: #d9534f; color: #fff; }
+        #btn-back { background: #337ab7; color: #fff; }
         #controls button:hover { opacity: 0.85; }
         #info {
             margin-bottom: 10px;
@@ -54,6 +55,7 @@
         <button id="btn-pause">暂停</button>
         <button id="btn-resume">继续</button>
         <button id="btn-reset">重置</button>
+        <button id="btn-back">返回选关</button>
     </div>
     <div id="info">
         <span>分数: <strong id="score">0</strong></span>
@@ -72,6 +74,7 @@
 <script src="piece-config.js"></script>
 <script src="enemy-config.js"></script>
 <script src="wave-config.js"></script>
+<script src="stages-config.js"></script>
 <script src="initial-layout.js"></script>
 <script src="combat-behaviors.js"></script>
 <script src="combat-renderers.js"></script>
@@ -939,6 +942,64 @@ class Renderer {
         }
     }
 
+    drawLevelSelectScreen(stages, canvasEl) {
+        const ctx = this.ctx;
+        const w = canvasEl.width;
+        const h = canvasEl.height;
+
+        // 背景
+        ctx.fillStyle = '#0f0f23';
+        ctx.fillRect(0, 0, w, h);
+
+        // 标题
+        ctx.fillStyle = '#e0e0ff';
+        ctx.font = 'bold 28px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('选择关卡', w / 2, 60);
+
+        // 关卡卡片
+        const cardW = 260;
+        const cardH = 70;
+        const gap = 16;
+        const startY = 110;
+        this._stageButtons = [];
+
+        for (let i = 0; i < stages.length; i++) {
+            const stage = stages[i];
+            const cx = w / 2 - cardW / 2;
+            const cy = startY + i * (cardH + gap);
+
+            // 卡片背景
+            ctx.fillStyle = 'rgba(30, 30, 60, 0.9)';
+            ctx.strokeStyle = '#88a';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.roundRect(cx, cy, cardW, cardH, 8);
+            ctx.fill();
+            ctx.stroke();
+
+            // 关卡编号
+            ctx.fillStyle = '#FFD700';
+            ctx.font = 'bold 20px sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText('第 ' + stage.id + ' 关', cx + 16, cy + 30);
+
+            // 关卡名称
+            ctx.fillStyle = '#ccc';
+            ctx.font = '16px sans-serif';
+            ctx.fillText(stage.name, cx + 16, cy + 54);
+
+            // 波次数量提示
+            const waveCount = stage.waveConfig ? stage.waveConfig.length : 0;
+            ctx.fillStyle = '#888';
+            ctx.font = '13px sans-serif';
+            ctx.textAlign = 'right';
+            ctx.fillText(waveCount + ' 波', cx + cardW - 16, cy + 44);
+
+            this._stageButtons.push({ x: cx, y: cy, w: cardW, h: cardH, index: i });
+        }
+    }
+
     drawDragPreview(dragManager) {
         if (!dragManager.isDragging || !dragManager.dragPreviewPos) return;
         const ctx = this.ctx;
@@ -1342,6 +1403,9 @@ class Game {
         this.movingPiece = null;
         this.dragManager = new DragManager(this);
         this.waveManager = new WaveManager(WAVE_CONFIGS);
+        this.gameScreen = 'level-select'; // 'level-select' | 'playing'
+        this.stages = [];
+        this.currentStageIndex = -1;
         this.waveManager.onClearBattlefield = () => {
             this.balls = [];
             this.soldiers = [];
@@ -1445,6 +1509,60 @@ class Game {
         if (pieceB) pieceB.pinPoint = pinA;
     }
 
+    selectStage(stageIndex) {
+        const stage = this.stages[stageIndex];
+        if (!stage) return;
+
+        this.currentStageIndex = stageIndex;
+
+        // 用关卡的 boardConfig 覆盖当前弹球台配置
+        if (stage.boardConfig) {
+            Object.assign(BoardConfig, stage.boardConfig);
+            this.canvas.width = BoardConfig.width;
+            this.canvas.height = BoardConfig.height;
+        }
+
+        // 用关卡的 waveConfig 覆盖波次配置
+        if (stage.waveConfig) {
+            WAVE_CONFIGS = stage.waveConfig;
+        }
+
+        // 重新初始化游戏
+        this.init();
+
+        // 用关卡的 initialGold 覆盖商店初始金币
+        if (typeof stage.initialGold === 'number' && stage.initialGold >= 0) {
+            this.shop.gold = stage.initialGold;
+        }
+
+        // 切换到游戏画面
+        this.gameScreen = 'playing';
+        this.waveManager.startShopPhase();
+    }
+
+    returnToLevelSelect() {
+        this.status = 'paused';
+        if (this.animFrameId) {
+            cancelAnimationFrame(this.animFrameId);
+            this.animFrameId = null;
+        }
+        this.gameScreen = 'level-select';
+        this.currentStageIndex = -1;
+        this.pinPoints = [];
+        this.balls = [];
+        this.soldiers = [];
+        this.enemies = [];
+        this.projectiles = [];
+        this.score = 0;
+        this.breaches = 0;
+        this.gameWon = false;
+        this.selectionPanel = null;
+        this.movingPiece = null;
+        if (this.dragManager) this.dragManager.cancelDrag();
+        this.render();
+        this._updateUI();
+    }
+
     start() {
         this.status = 'running';
         this.lastTime = performance.now();
@@ -1489,6 +1607,9 @@ class Game {
 
     update(dt) {
         const now = performance.now();
+
+        // 关卡选择界面不更新游戏逻辑
+        if (this.gameScreen === 'level-select') return;
 
         // 游戏已胜利，不再更新
         if (this.gameWon) {
@@ -1610,6 +1731,12 @@ class Game {
     }
 
     render() {
+        // 关卡选择界面
+        if (this.gameScreen === 'level-select') {
+            this.renderer.drawLevelSelectScreen(this.stages, this.canvas);
+            return;
+        }
+
         this.renderer.clear();
         this.renderer.drawBoard();
 
@@ -1684,9 +1811,21 @@ class Game {
             ctx.fillStyle = '#fff';
             ctx.font = '18px sans-serif';
             ctx.fillText('所有波次已击退！得分: ' + this.score, BoardConfig.width / 2, BoardConfig.height / 2 + 20);
-            ctx.fillStyle = '#aaa';
-            ctx.font = '14px sans-serif';
-            ctx.fillText('点击「重置」按钮重新开始', BoardConfig.width / 2, BoardConfig.height / 2 + 50);
+            // 返回选关按钮
+            const btnW = 160;
+            const btnH = 36;
+            const btnX = BoardConfig.width / 2 - btnW / 2;
+            const btnY = BoardConfig.height / 2 + 50;
+            ctx.fillStyle = '#5cb85c';
+            ctx.beginPath();
+            ctx.roundRect(btnX, btnY, btnW, btnH, 6);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 15px sans-serif';
+            ctx.fillText('返回选关', BoardConfig.width / 2, btnY + btnH / 2 + 5);
+            this._returnToSelectBtn = { x: btnX, y: btnY, w: btnW, h: btnH };
+        } else {
+            this._returnToSelectBtn = null;
         }
     }
 }
@@ -1715,6 +1854,18 @@ function loadConfigs() {
     if (typeof WAVE_CONFIG_EXTERNAL !== 'undefined') {
         WAVE_CONFIGS = WAVE_CONFIG_EXTERNAL;
     }
+    // 加载关卡配置
+    if (typeof STAGES_CONFIG_EXTERNAL !== 'undefined' && Array.isArray(STAGES_CONFIG_EXTERNAL) && STAGES_CONFIG_EXTERNAL.length > 0) {
+        game.stages = STAGES_CONFIG_EXTERNAL;
+    } else {
+        // 回退：用现有配置构造默认单关卡
+        game.stages = [{
+            id: 1,
+            name: '默认关卡',
+            boardConfig: typeof BOARD_CONFIG_EXTERNAL !== 'undefined' ? Object.assign({}, BOARD_CONFIG_EXTERNAL) : Object.assign({}, BoardConfig),
+            waveConfig: WAVE_CONFIGS.slice()
+        }];
+    }
 }
 
 // ============================================================
@@ -1724,19 +1875,43 @@ const canvas = document.getElementById('gameCanvas');
 const game = new Game(canvas);
 
 loadConfigs();
-game.init();
-game.start();
+game.gameScreen = 'level-select';
+game.render();
 
 // 按钮事件
 document.getElementById('btn-pause').addEventListener('click', () => game.pause());
 document.getElementById('btn-resume').addEventListener('click', () => game.resume());
-document.getElementById('btn-reset').addEventListener('click', () => { game.reset(); game.start(); });
+document.getElementById('btn-reset').addEventListener('click', () => { game.returnToLevelSelect(); });
+document.getElementById('btn-back').addEventListener('click', () => { game.returnToLevelSelect(); });
 
 // 点击交互：商店购买、棋子放置/移除、发射器
 canvas.addEventListener('click', (e) => {
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
+
+    // 关卡选择界面点击
+    if (game.gameScreen === 'level-select') {
+        if (game.renderer._stageButtons) {
+            for (const btn of game.renderer._stageButtons) {
+                if (mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h) {
+                    game.selectStage(btn.index);
+                    game.start();
+                    return;
+                }
+            }
+        }
+        return;
+    }
+
+    // 胜利画面 "返回选关" 按钮
+    if (game.gameWon && game._returnToSelectBtn) {
+        const rb = game._returnToSelectBtn;
+        if (mx >= rb.x && mx <= rb.x + rb.w && my >= rb.y && my <= rb.y + rb.h) {
+            game.returnToLevelSelect();
+            return;
+        }
+    }
 
     const isShopPhase = game.waveManager && game.waveManager.phase === 'shop';
 
@@ -1757,6 +1932,9 @@ canvas.addEventListener('mousedown', (e) => {
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
+
+    // 关卡选择界面不处理拖拽
+    if (game.gameScreen === 'level-select') return;
 
     const isShopPhase = game.waveManager && game.waveManager.phase === 'shop';
 

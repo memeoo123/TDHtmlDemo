@@ -149,6 +149,43 @@
   - 确保所有测试通过，如有问题请询问用户。
   - 验证完整流程：从商店拖拽购买棋子 → 拖拽到点位放置 → 拖拽合并升级 → 拖拽交换位置 → 拖拽到商店卖出 → 战斗阶段禁止卖出但允许移动和升级
 
+- [x] 30. 实现关卡选择系统
+  - [x] 30.1 创建 `stages-config.js` 关卡配置文件
+    - 定义全局变量 `STAGES_CONFIG_EXTERNAL`，包含至少 2 个关卡
+    - 每个关卡包含 `id`（编号）、`name`（名称）、`boardConfig`（弹球台配置）、`waveConfig`（波次配置）
+    - 第一关复用现有 board-config.js 和 wave-config.js 的数据
+    - 在 `index.html` 中通过 `<script src="stages-config.js">` 引入
+    - _Requirements: 16.4, 16.5_
+  - [x] 30.2 扩展 `Game` 类，新增关卡选择状态和加载逻辑
+    - 新增 `gameScreen` 属性（'level-select' | 'playing'），初始值 'level-select'
+    - 新增 `stages` 数组和 `currentStageIndex` 属性
+    - 在 `loadConfigs()` 中加载 `STAGES_CONFIG_EXTERNAL`，加载失败或为空时用现有 `BOARD_CONFIG_EXTERNAL` + `WAVE_CONFIG_EXTERNAL` 构造默认单关卡
+    - _Requirements: 16.1, 16.5, 16.6_
+  - [x] 30.3 实现 `selectStage(stageIndex)` 方法
+    - 用关卡的 `boardConfig` 覆盖 `BoardConfig`
+    - 用关卡的 `waveConfig` 初始化波次管理器
+    - 重新初始化弹球台（点位网格依赖 BoardConfig）
+    - 设置 `gameScreen = 'playing'`，进入整备阶段
+    - _Requirements: 16.3, 16.4_
+  - [x] 30.4 实现关卡选择界面渲染和交互
+    - 在 `Renderer` 中新增 `drawLevelSelectScreen(stages, canvas)` 方法，绘制关卡卡片列表（显示编号和名称）
+    - 修改 `render()` 方法，根据 `gameScreen` 状态决定绘制选关界面还是游戏画面
+    - 修改 Canvas 事件处理，`level-select` 状态下检测关卡卡片点击并调用 `selectStage()`
+    - _Requirements: 16.1, 16.2, 16.3_
+  - [x] 30.5 实现返回关卡选择界面功能
+    - 实现 `returnToLevelSelect()` 方法：设置 `gameScreen = 'level-select'`，重置游戏状态（清空弹球、士兵、敌人等）
+    - 所有波次完成后显示"返回选关"按钮
+    - 游戏 UI 区域添加"返回选关"按钮入口
+    - _Requirements: 16.7_
+  - [ ]* 30.6 编写关卡选择系统属性测试
+    - **Property 46: 选择关卡后使用该关卡配置初始化游戏**
+    - **Property 47: 返回关卡选择界面重置游戏状态**
+    - **Validates: Requirements 16.3, 16.4, 16.7**
+
+- [ ] 31. 检查点 - 确保关卡选择系统完整运行
+  - 确保所有测试通过，如有问题请询问用户。
+  - 验证完整流程：启动显示选关界面 → 选择关卡 → 使用关卡配置进入游戏 → 完成波次后返回选关界面 → 选择另一关卡
+
 ## 备注
 
 - 标记 `*` 的任务为可选任务，可跳过以加快 MVP 进度

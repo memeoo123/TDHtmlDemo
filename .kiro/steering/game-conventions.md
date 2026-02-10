@@ -14,7 +14,7 @@ inclusion: auto
 | 棋子弹球 | Ball | 由棋子发射的弹球，继承棋子的类型属性，具有物理运动特性 |
 | 碰撞钉 | Collision_Pin | 未放置棋子的空点位，作为传统弹球碰撞障碍物 |
 | 发射器 | Launcher | 位于弹球台底部，玩家手动发射弹球的组件 |
-| 棋子类型 | PieceType | 棋子的分类属性（FIRE/ICE/THUNDER），决定弹球外观和行为 |
+| 棋子类型 | PieceType | 棋子的分类属性（FIRE/ICE/THUNDER/EARTH/WIND/DARK/HOLY/POISON），决定弹球外观和行为 |
 | 士兵 | Soldier | 弹球落到地面后转化的地面单位，继承弹球类型，向右移动 |
 | 敌人 | Enemy | 从右侧生成的敌方单位，向左移动，与士兵战斗 |
 | 投射物 | Projectile | 远程型单位发射的攻击弹体 |
@@ -31,12 +31,27 @@ inclusion: auto
 | 烈焰光环 | Aura_Skill | FIRE 5 级技能，士兵对范围内敌人施加持续灼烧伤害（damagePerSecond × dt） |
 | 冰霜减速 | Slow_Skill | ICE 5 级技能，投射物命中时减缓敌人移动速度，持续一定时间后恢复 |
 | 连锁闪电 | Chain_Skill | THUNDER 5 级技能，近战攻击时闪电跳跃到附近敌人，伤害逐次衰减 |
+| 岩卫士 | EARTH | 近战肉盾型棋子，高HP低攻速，5级技能岩石壁垒（aura） |
+| 风行者 | WIND | 远程速射型棋子，高速低血，5级技能疾风连射（slow） |
+| 暗影刺客 | DARK | 近战爆发型棋子，高攻高速脆皮，5级技能暗影突袭（chain） |
+| 圣光牧师 | HOLY | 远程辅助型棋子，均衡属性，5级技能圣光审判（slow） |
+| 毒蛇术士 | POISON | 远程持续伤害型棋子，中等属性，5级技能剧毒弥漫（aura） |
+| 狂战士 | BRUTE | 近战重型敌人，高HP高攻击但移动缓慢 |
+| 暗杀者 | ASSASSIN | 近战刺客型敌人，高速高攻但血量低 |
+| 法师 | MAGE | 远程高伤敌人，射程远攻击间隔长 |
+| 盾卫 | SHIELDBEARER | 近战超级肉盾敌人，极高HP但攻击力低 |
+| 弩手 | CROSSBOW | 远程速射型敌人，高攻速高弹速 |
+| 关卡 | Stage | 游戏的独立关卡单元，每关包含专属的弹球台配置和波次配置 |
+| 关卡选择界面 | Level_Select_Screen | 游戏启动时显示的关卡列表界面，玩家点击选择关卡后进入游戏 |
+| 关卡配置 | Stage_Config | 单个关卡的完整配置数据，包含 id、name、initialGold、boardConfig、waveConfig |
+| 初始金币 | Initial_Gold | 关卡开始时玩家拥有的金币数量，定义在 Stage_Config 的 `initialGold` 字段中，`selectStage()` 加载后覆盖 Shop 默认值 |
+| 游戏画面状态 | Game_Screen | Game 类的 `gameScreen` 属性，值为 `'level-select'` 或 `'playing'` |
 
 ## 架构约定
 
 - **单文件架构**：所有游戏核心逻辑在 `index.html` 的 `<script>` 标签中
 - **策略模式外置**：`combat-behaviors.js`（战斗行为：move/findTarget/canEngage + 技能方法 applyChainLightning/applySlowEffect）+ `combat-renderers.js`（渲染策略）通过 `<script src>` 引入
-- **配置外置**：`board-config.js`、`physics-config.js`、`balance-config.js`、`level-config.js`、`piece-config.js`、`enemy-config.js`、`wave-config.js`、`initial-layout.js` 均为外部 JS 文件，通过 `<script src>` 引入，定义全局变量（如 `BOARD_CONFIG_EXTERNAL`、`PIECE_CONFIG_EXTERNAL` 等），在 `loadConfigs()` 中覆盖内置默认值
+- **配置外置**：`board-config.js`、`physics-config.js`、`balance-config.js`、`level-config.js`、`piece-config.js`、`enemy-config.js`、`wave-config.js`、`stages-config.js`、`initial-layout.js` 均为外部 JS 文件，通过 `<script src>` 引入，定义全局变量（如 `BOARD_CONFIG_EXTERNAL`、`STAGES_CONFIG_EXTERNAL` 等），在 `loadConfigs()` 中覆盖内置默认值
 - **全局配置对象**：`PhysicsConfig`（物理参数：重力、碰撞衰减、弹球/点位半径）、`BalanceConfig`（平衡参数：近战距离、生成间隔、实体上限、投射物半径、单位尺寸）、`LevelConfig`（等级倍率表、最大等级）在 `index.html` 中定义内置默认值，外部 JS 通过 `Object.assign` 或直接赋值覆盖
 
 ## 关键设计决策
@@ -56,6 +71,9 @@ inclusion: auto
 - 技能效果通过策略模式集成：melee 的 `move()` 接收 `context.enemies` 处理 aura，`applyChainLightning()` 处理 chain；ranged 的投射物携带 `_sourceSkill`，命中时由 `Combat.processProjectiles` 调用 `applySlowEffect()`
 - 减速效果（slow）不叠加，刷新持续时间；过期后在 `Enemy.update()` 中恢复原始速度
 - 近战战斗伤害处理：近战士兵 vs 敌人在 `processMeleeCombat` 中互相伤害；近战敌人锁定非近战士兵（如远程法师）时，由敌人视角独立处理伤害，避免远程士兵被近战敌人攻击时无伤害的问题
+- 游戏启动流程：启动 → 关卡选择界面（level-select）→ 选择关卡 → 用该关卡的 boardConfig/waveConfig 初始化游戏 → 进入整备阶段 → 战斗 → 所有波次完成后可返回选关界面
+- 关卡配置优先级：`STAGES_CONFIG_EXTERNAL` 存在且非空时优先使用关卡配置；加载失败或为空时回退用 `BOARD_CONFIG_EXTERNAL` + `WAVE_CONFIG_EXTERNAL` 构造默认单关卡
+- `selectStage()` 会用关卡的 boardConfig 覆盖 `BoardConfig`、用 waveConfig 覆盖 `WAVE_CONFIGS`，然后重新初始化弹球台点位网格
 
 ## 测试约定
 

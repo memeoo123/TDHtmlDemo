@@ -42,3 +42,17 @@
 7. WHILE 当前波次处于战斗阶段, THE 游戏 SHALL 禁止棋子升级操作，仅允许棋子移动
 8. THE 游戏 SHALL 在棋子的视觉渲染中显示当前等级（通过等级标识或视觉增强效果区分不同等级）
 9. WHEN 玩家移除一个已升级的棋子时, THE 商店（Shop） SHALL 退还该棋子的原始购买价格（不包含升级消耗的棋子价值）
+
+### 需求 16：关卡选择系统
+
+**用户故事：** 作为玩家，我希望在游戏启动时看到一个关卡选择界面，每个关卡有独立的弹球台配置和波次配置，以便我能选择不同的关卡体验不同的挑战。
+
+#### 验收标准
+
+1. WHEN 游戏启动时, THE 游戏 SHALL 显示关卡选择界面（Level_Select_Screen），而非直接进入游戏
+2. THE 关卡选择界面（Level_Select_Screen） SHALL 以可视化列表形式展示所有可用关卡，每个关卡显示关卡编号和名称
+3. WHEN 玩家点击选择某个关卡时, THE 游戏 SHALL 使用该关卡的配置数据（Stage_Config）初始化游戏并进入整备阶段
+4. THE 关卡配置（Stage_Config） SHALL 包含该关卡专属的弹球台配置（board-config）和波次配置（wave-config）
+5. THE 游戏 SHALL 通过外部配置文件（stages-config.js）加载所有关卡数据，配置文件定义全局变量 `STAGES_CONFIG_EXTERNAL`
+6. WHEN 关卡配置文件加载失败或为空时, THE 游戏 SHALL 使用现有的 `BOARD_CONFIG_EXTERNAL` 和 `WAVE_CONFIG_EXTERNAL` 作为默认单关卡配置
+7. WHEN 玩家在游戏中完成所有波次或希望返回选关界面时, THE 游戏 SHALL 提供返回关卡选择界面的入口

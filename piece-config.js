@@ -54,5 +54,100 @@ const PIECE_CONFIG_EXTERNAL = {
             chainDamageRatio: 0.5,
             chainRange: 60
         }
+    },
+    EARTH: {
+        name: '岩卫士',
+        color: '#AA7744',
+        fireInterval: 3500,
+        ballSpeed: 2,
+        combatType: 'melee',
+        soldierHP: 10,
+        soldierAttack: 1,
+        soldierSpeed: 0.8,
+        price: 12,
+        skill: {
+            name: '岩石壁垒',
+            type: 'aura',
+            damagePerSecond: 0.3,
+            radius: 30
+        }
+    },
+    WIND: {
+        name: '风行者',
+        color: '#88DDAA',
+        fireInterval: 1200,
+        ballSpeed: 5,
+        combatType: 'ranged',
+        soldierHP: 2,
+        soldierAttack: 1,
+        soldierSpeed: 2.5,
+        attackRange: 180,
+        projectileSpeed: 6,
+        attackInterval: 700,
+        price: 14,
+        skill: {
+            name: '疾风连射',
+            type: 'slow',
+            slowFactor: 0.6,
+            duration: 1500
+        }
+    },
+    DARK: {
+        name: '暗影刺客',
+        color: '#9944CC',
+        fireInterval: 2500,
+        ballSpeed: 3.5,
+        combatType: 'melee',
+        soldierHP: 3,
+        soldierAttack: 4,
+        soldierSpeed: 2.2,
+        price: 16,
+        skill: {
+            name: '暗影突袭',
+            type: 'chain',
+            chainCount: 3,
+            chainDamageRatio: 0.6,
+            chainRange: 50
+        }
+    },
+    HOLY: {
+        name: '圣光牧师',
+        color: '#FFEEAA',
+        fireInterval: 3200,
+        ballSpeed: 2.5,
+        combatType: 'ranged',
+        soldierHP: 4,
+        soldierAttack: 1.2,
+        soldierSpeed: 1,
+        attackRange: 160,
+        projectileSpeed: 3.5,
+        attackInterval: 1200,
+        price: 18,
+        skill: {
+            name: '圣光审判',
+            type: 'slow',
+            slowFactor: 0.4,
+            duration: 2500
+        }
+    },
+    POISON: {
+        name: '毒蛇术士',
+        color: '#66CC44',
+        fireInterval: 2800,
+        ballSpeed: 2.8,
+        combatType: 'ranged',
+        soldierHP: 3,
+        soldierAttack: 1.8,
+        soldierSpeed: 1.2,
+        attackRange: 130,
+        projectileSpeed: 3,
+        attackInterval: 900,
+        price: 13,
+        skill: {
+            name: '剧毒弥漫',
+            type: 'aura',
+            damagePerSecond: 0.8,
+            radius: 50
+        }
     }
 };

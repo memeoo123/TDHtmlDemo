@@ -15,6 +15,7 @@ combat-behaviors.js     — COMBAT_BEHAVIORS 策略注册表（move/findTarget/c
 combat-renderers.js     — COMBAT_RENDERERS 渲染注册表（drawSoldier/drawEnemy）
 board-config.js         — 弹球台外部配置覆盖
 initial-layout.js       — 初始棋子布局覆盖
+stages-config.js        — 关卡配置（每关包含独立的 boardConfig + waveConfig）
 *.json                  — piece-config / enemy-config / board-config / wave-config
 ```
 
@@ -295,6 +296,179 @@ static getSellPrice(pieceType, level) {
 - 等级越高，棋子光环/描边越亮
 - 5 级棋子额外显示技能图标或特殊光效
 
+## 未完成设计：关卡选择系统
+
+### 概述
+
+游戏启动时不再直接进入游戏，而是先显示关卡选择界面。每个关卡拥有独立的弹球台配置（board-config）和波次配置（wave-config），玩家选择关卡后使用对应配置初始化游戏。
+
+### 游戏状态扩展
+
+在现有游戏状态基础上新增 `level-select` 状态：
+
+```
+level-select → 选择关卡 → shop（整备阶段）→ combat（战斗阶段）→ ... → 所有波次完成 → level-select
+```
+
+Game 类新增 `gameScreen` 属性：
+
+```javascript
+// Game 类扩展
+class Game {
+    constructor() {
+        // ... 现有属性
+        this.gameScreen = 'level-select'; // 'level-select' | 'playing'
+        this.stages = [];                  // 所有关卡配置
+        this.currentStageIndex = -1;       // 当前选中的关卡索引
+    }
+}
+```
+
+### 关卡配置数据模型
+
+#### Stage_Config 结构
+
+```javascript
+// stages-config.js 定义全局变量
+const STAGES_CONFIG_EXTERNAL = [
+    {
+        id: 1,
+        name: "新手试炼",
+        boardConfig: {
+            width: 600,
+            height: 700,
+            pinballAreaHeight: 500,
+            groundAreaHeight: 200,
+            groundY: 500,
+            pinRows: 9,
+            pinCols: 8,
+            pinSpacingX: 75,
+            pinSpacingY: 35,
+            pinStartX: 45,
+            pinStartY: 60,
+            wallThickness: 10
+        },
+        waveConfig: [
+            { wave: 1, enemies: [{ type: 'GRUNT', count: 5 }], spawnInterval: 3000 },
+            { wave: 2, enemies: [{ type: 'GRUNT', count: 5 }, { type: 'ARCHER', count: 3 }], spawnInterval: 2500 }
+        ]
+    },
+    {
+        id: 2,
+        name: "进阶挑战",
+        boardConfig: { /* 不同的弹球台配置 */ },
+        waveConfig: [ /* 不同的波次配置 */ ]
+    }
+];
+```
+
+每个 Stage_Config 必须包含：
+- `id`：关卡编号（正整数）
+- `name`：关卡名称（字符串）
+- `boardConfig`：该关卡的弹球台配置，结构与 `BOARD_CONFIG_EXTERNAL` 一致
+- `waveConfig`：该关卡的波次配置，结构与 `WAVE_CONFIG_EXTERNAL` 一致
+
+### 配置加载与回退
+
+在 `loadConfigs()` 中新增 stages-config.js 的加载逻辑：
+
+```javascript
+loadConfigs() {
+    // ... 现有配置加载
+
+    // 加载关卡配置
+    if (typeof STAGES_CONFIG_EXTERNAL !== 'undefined' && Array.isArray(STAGES_CONFIG_EXTERNAL) && STAGES_CONFIG_EXTERNAL.length > 0) {
+        this.stages = STAGES_CONFIG_EXTERNAL;
+    } else {
+        // 回退：用现有的 BOARD_CONFIG_EXTERNAL + WAVE_CONFIG_EXTERNAL 构造默认单关卡
+        this.stages = [{
+            id: 1,
+            name: "默认关卡",
+            boardConfig: typeof BOARD_CONFIG_EXTERNAL !== 'undefined' ? BOARD_CONFIG_EXTERNAL : {},
+            waveConfig: typeof WAVE_CONFIG_EXTERNAL !== 'undefined' ? WAVE_CONFIG_EXTERNAL : []
+        }];
+    }
+}
+```
+
+### 关卡选择与初始化流程
+
+```javascript
+// 选择关卡并初始化
+selectStage(stageIndex) {
+    const stage = this.stages[stageIndex];
+    if (!stage) return;
+
+    this.currentStageIndex = stageIndex;
+
+    // 用关卡的 boardConfig 覆盖当前弹球台配置
+    Object.assign(BoardConfig, stage.boardConfig);
+
+    // 用关卡的 waveConfig 初始化波次管理器
+    this.waveManager.loadWaves(stage.waveConfig);
+
+    // 重新初始化弹球台（点位网格等依赖 BoardConfig）
+    this.initBoard();
+
+    // 切换到游戏画面，进入整备阶段
+    this.gameScreen = 'playing';
+    this.waveManager.startShopPhase();
+}
+```
+
+### 关卡选择界面渲染
+
+在 Renderer 中新增关卡选择界面的绘制：
+
+```javascript
+// Renderer 扩展
+drawLevelSelectScreen(stages, canvas) {
+    // 清空画布，绘制标题
+    // 遍历 stages 数组，为每个关卡绘制一个可点击的卡片/按钮
+    // 每个卡片显示：关卡编号（id）和关卡名称（name）
+    // 布局：居中网格排列
+}
+```
+
+### 返回关卡选择界面
+
+两个入口：
+1. 所有波次完成后，显示"返回选关"按钮
+2. 游戏中提供"返回选关"按钮（在暂停/UI 区域）
+
+```javascript
+returnToLevelSelect() {
+    this.gameScreen = 'level-select';
+    this.currentStageIndex = -1;
+    // 重置游戏状态（清空弹球、士兵、敌人等）
+    this.reset();
+}
+```
+
+### 事件处理扩展
+
+Canvas 的点击/拖拽事件需根据 `gameScreen` 状态分派：
+
+```javascript
+handleMouseDown(e) {
+    if (this.gameScreen === 'level-select') {
+        // 检测点击了哪个关卡卡片
+        const stageIndex = this.getClickedStageIndex(e.x, e.y);
+        if (stageIndex >= 0) this.selectStage(stageIndex);
+    } else {
+        // 现有的拖拽交互逻辑
+        this.dragManager.handleMouseDown(e);
+    }
+}
+```
+
+### 对现有配置文件的影响
+
+引入 stages-config.js 后：
+- `board-config.js` 和 `wave-config.js` 仍保留作为回退默认值
+- 当 `STAGES_CONFIG_EXTERNAL` 存在且非空时，游戏优先使用关卡配置
+- 每个关卡的 `boardConfig` 和 `waveConfig` 完全独立，互不影响
+
 ## 正确性属性（未验证）
 
 > 已验证的属性（Property 1-31）已通过对应的属性测试确认，此处仅列出待验证属性。
@@ -355,6 +529,14 @@ static getSellPrice(pieceType, level) {
 *对于任意*棋子类型和不足的金币数量（gold < type.price），从商店拖拽棋子到空点位后，该点位应保持为空，金币数量不变。
 **Validates: Requirements 3.2**
 
+### Property 46: 选择关卡后使用该关卡配置初始化游戏
+*对于任意*有效的关卡配置（包含 boardConfig 和 waveConfig），选择该关卡后，游戏的弹球台配置应等于该关卡的 boardConfig，波次管理器的波次数据应等于该关卡的 waveConfig，且游戏画面状态应为 playing、波次阶段应为 shop。
+**Validates: Requirements 16.3, 16.4**
+
+### Property 47: 返回关卡选择界面重置游戏状态
+*对于任意*处于 playing 状态的游戏，执行返回关卡选择操作后，游戏画面状态应为 level-select，弹球列表、士兵列表、敌人列表应为空。
+**Validates: Requirements 16.7**
+
 ## 错误处理
 
 - 弹球/士兵/敌人超出边界时强制修正或移除
@@ -365,6 +547,8 @@ static getSellPrice(pieceType, level) {
 - 合并操作前验证：阶段为 shop、两个点位均有棋子、类型相同、等级相同、等级 < 5
 - 等级 5 棋子尝试合并时静默拒绝（不报错，不改变状态）
 - 技能配置缺失时棋子正常运作但无技能效果
+- 关卡配置文件（stages-config.js）加载失败或为空时，回退使用现有 BOARD_CONFIG_EXTERNAL 和 WAVE_CONFIG_EXTERNAL 构造默认单关卡
+- 关卡 boardConfig 或 waveConfig 字段缺失时使用内置默认值补全
 
 ## 测试策略
 
