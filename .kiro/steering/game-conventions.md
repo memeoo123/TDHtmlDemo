@@ -28,13 +28,16 @@ inclusion: auto
 | 技能 | Skill | 5 级棋子解锁的专属能力，在战斗阶段自动生效 |
 | 卖出价格 | Sell_Price | 棋子卖出时退还的金币，等于 `floor(2^(level-1) × price / 2)` |
 | 拖拽管理器 | DragManager | 管理所有拖拽交互状态（来源、预览位置、目标判定） |
+| 烈焰光环 | Aura_Skill | FIRE 5 级技能，士兵对范围内敌人施加持续灼烧伤害（damagePerSecond × dt） |
+| 冰霜减速 | Slow_Skill | ICE 5 级技能，投射物命中时减缓敌人移动速度，持续一定时间后恢复 |
+| 连锁闪电 | Chain_Skill | THUNDER 5 级技能，近战攻击时闪电跳跃到附近敌人，伤害逐次衰减 |
 
 ## 架构约定
 
 - **单文件架构**：所有游戏核心逻辑在 `index.html` 的 `<script>` 标签中
-- **策略模式外置**：`combat-behaviors.js`（战斗行为）+ `combat-renderers.js`（渲染策略）通过 `<script src>` 引入
-- **配置外置**：`piece-config.json`、`enemy-config.json`、`board-config.json`、`wave-config.json`、`physics-config.json`、`balance-config.json`、`initial-layout.js` 通过 fetch 或 script 加载，失败时回退内置默认值
-- **全局配置对象**：`PhysicsConfig`（物理参数：重力、碰撞衰减、弹球/点位半径）和 `BalanceConfig`（平衡参数：近战距离、生成间隔、实体上限、投射物半径、单位尺寸）在 `index.html` 中定义内置默认值，外部 JSON 通过 `Object.assign` 覆盖
+- **策略模式外置**：`combat-behaviors.js`（战斗行为：move/findTarget/canEngage + 技能方法 applyChainLightning/applySlowEffect）+ `combat-renderers.js`（渲染策略）通过 `<script src>` 引入
+- **配置外置**：`board-config.js`、`physics-config.js`、`balance-config.js`、`level-config.js`、`piece-config.js`、`enemy-config.js`、`wave-config.js`、`initial-layout.js` 均为外部 JS 文件，通过 `<script src>` 引入，定义全局变量（如 `BOARD_CONFIG_EXTERNAL`、`PIECE_CONFIG_EXTERNAL` 等），在 `loadConfigs()` 中覆盖内置默认值
+- **全局配置对象**：`PhysicsConfig`（物理参数：重力、碰撞衰减、弹球/点位半径）、`BalanceConfig`（平衡参数：近战距离、生成间隔、实体上限、投射物半径、单位尺寸）、`LevelConfig`（等级倍率表、最大等级）在 `index.html` 中定义内置默认值，外部 JS 通过 `Object.assign` 或直接赋值覆盖
 
 ## 关键设计决策
 
@@ -48,7 +51,11 @@ inclusion: auto
 - 战斗阶段禁止从商店购买和向商店卖出，但允许点位间拖拽（移动/交换/升级）
 - 击败敌人获得金币（`enemy.score`），金币跨波次保留
 - 棋子等级 1-5，两个同类型同等级棋子可在整备阶段合并升级，等级倍率作用于士兵 HP/攻击/速度
-- 5 级棋子解锁专属技能，技能定义在 `piece-config.json` 的 `skill` 字段中
+- 5 级棋子解锁专属技能，技能定义在 `piece-config.js` 的 `skill` 字段中
+- 技能属性传递链：`piece-config.js` skill 定义 → `ChessPiece.fire()` 仅 5 级时写入 effectiveType.skill → `Ball.type.skill` → `Soldier.skill` → 战斗行为策略读取并执行
+- 技能效果通过策略模式集成：melee 的 `move()` 接收 `context.enemies` 处理 aura，`applyChainLightning()` 处理 chain；ranged 的投射物携带 `_sourceSkill`，命中时由 `Combat.processProjectiles` 调用 `applySlowEffect()`
+- 减速效果（slow）不叠加，刷新持续时间；过期后在 `Enemy.update()` 中恢复原始速度
+- 近战战斗伤害处理：近战士兵 vs 敌人在 `processMeleeCombat` 中互相伤害；近战敌人锁定非近战士兵（如远程法师）时，由敌人视角独立处理伤害，避免远程士兵被近战敌人攻击时无伤害的问题
 
 ## 测试约定
 

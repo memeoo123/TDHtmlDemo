@@ -1,7 +1,0 @@
-{
-    "gravity": 0.15,
-    "pinCollisionDampening": 0.92,
-    "wallCollisionDampening": 0.9,
-    "ballRadius": 5,
-    "pinCollisionRadius": 8
-}

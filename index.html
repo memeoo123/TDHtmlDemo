@@ -66,6 +66,12 @@
     <canvas id="gameCanvas" width="600" height="700"></canvas>
 
 <script src="board-config.js"></script>
+<script src="physics-config.js"></script>
+<script src="balance-config.js"></script>
+<script src="level-config.js"></script>
+<script src="piece-config.js"></script>
+<script src="enemy-config.js"></script>
+<script src="wave-config.js"></script>
 <script src="initial-layout.js"></script>
 <script src="combat-behaviors.js"></script>
 <script src="combat-renderers.js"></script>
@@ -105,20 +111,28 @@ const PhysicsConfig = {
     pinCollisionDampening: 0.92,
     wallCollisionDampening: 0.9,
     ballRadius: 5,
-    pinCollisionRadius: 8
+    pinCollisionRadius: 13
+};
+
+// ============================================================
+// 等级倍率配置（内置默认值，可被外部 JSON 覆盖）
+// ============================================================
+const LevelConfig = {
+    multipliers: [1.0, 1.0, 1.3, 1.6, 2.0, 2.5],
+    maxLevel: 5
 };
 
 // ============================================================
 // 游戏平衡参数配置（内置默认值，可被外部 JSON 覆盖）
 // ============================================================
 const BalanceConfig = {
-    meleeRange: 16,
+    meleeRange: 34,
     enemySpawnInterval: 3000,
     maxBalls: 100,
     maxSoldiers: 50,
     maxEnemies: 30,
     projectileRadius: 3,
-    unitSize: 12
+    unitSize: 28
 };
 
 // ============================================================
@@ -134,7 +148,8 @@ let PIECE_TYPES = {
         soldierHP: 5,
         soldierAttack: 2,
         soldierSpeed: 1.5,
-        price: 10
+        price: 10,
+        skill: { name: '烈焰光环', type: 'aura', damagePerSecond: 0.5, radius: 40 }
     },
     ICE: {
         name: '冰法师',
@@ -148,7 +163,8 @@ let PIECE_TYPES = {
         attackRange: 150,
         projectileSpeed: 4,
         attackInterval: 1000,
-        price: 15
+        price: 15,
+        skill: { name: '冰霜减速', type: 'slow', slowFactor: 0.5, duration: 2000 }
     },
     THUNDER: {
         name: '雷战士',
@@ -159,7 +175,8 @@ let PIECE_TYPES = {
         soldierHP: 3,
         soldierAttack: 3,
         soldierSpeed: 2,
-        price: 12
+        price: 12,
+        skill: { name: '连锁闪电', type: 'chain', chainCount: 2, chainDamageRatio: 0.5, chainRange: 60 }
     }
 };
 let PIECE_TYPE_LIST = Object.values(PIECE_TYPES);
@@ -196,10 +213,9 @@ class ChessPiece {
         this.level = level;
     }
 
-    // 等级倍率表：1→1.0, 2→1.3, 3→1.6, 4→2.0, 5→2.5
+    // 等级倍率表：从 LevelConfig 读取
     static getLevelMultiplier(level) {
-        const multipliers = [1.0, 1.0, 1.3, 1.6, 2.0, 2.5];
-        return multipliers[level] || 1.0;
+        return LevelConfig.multipliers[level] || 1.0;
     }
 
     // 获取升级后的有效属性
@@ -241,6 +257,12 @@ class ChessPiece {
         const vy = Math.sin(angle) * speed;
         // 合并基础配置与升级后的有效属性，确保 Soldier 继承增强数值
         const effectiveType = Object.assign({}, this.type, this.getEffectiveStats());
+        // 5 级棋子的弹球携带技能
+        if (this.hasSkill() && this.type.skill) {
+            effectiveType.skill = this.type.skill;
+        } else {
+            delete effectiveType.skill;
+        }
         return new Ball(this.pinPoint.x, this.pinPoint.y, vx, vy, effectiveType);
     }
 }
@@ -290,13 +312,15 @@ class Soldier {
         this.target = null;
         this.size = BalanceConfig.unitSize;
         this.direction = 1; // 士兵向右移动
+        // 5 级棋子的弹球携带技能，传递给士兵
+        this.skill = type.skill || null;
     }
     update(dt, enemies, now) {
         if (!this.alive) return;
         const behavior = COMBAT_BEHAVIORS[this.combatType];
         if (behavior) {
             behavior.findTarget(this, enemies);
-            behavior.move(this, dt);
+            behavior.move(this, dt, { enemies: enemies });
         }
         // 超出右边界移除
         if (this.x > BoardConfig.width) {
@@ -320,8 +344,8 @@ let ENEMY_TYPES = {
         name: '步兵',
         color: '#AA3333',
         combatType: 'melee',
-        hp: 4,
-        attack: 1,
+        hp: 6,
+        attack: 1.5,
         speed: 1,
         score: 10
     },
@@ -329,8 +353,8 @@ let ENEMY_TYPES = {
         name: '弓箭手',
         color: '#33AA33',
         combatType: 'ranged',
-        hp: 2,
-        attack: 1.5,
+        hp: 3,
+        attack: 1,
         speed: 0.8,
         attackRange: 120,
         projectileSpeed: 3,
@@ -365,6 +389,15 @@ class Enemy {
     }
     update(dt, soldiers, now) {
         if (!this.alive) return;
+        // 检查减速效果过期
+        if (this._slowExpiry && performance.now() >= this._slowExpiry) {
+            if (this._originalSpeed) {
+                this.speed = this._originalSpeed;
+            }
+            this._slowExpiry = null;
+            this._slowFactor = null;
+            this._originalSpeed = null;
+        }
         const behavior = COMBAT_BEHAVIORS[this.combatType];
         if (behavior) {
             behavior.findTarget(this, soldiers);
@@ -454,9 +487,24 @@ class Combat {
             if (!behavior || !behavior.canEngage(s, s.target)) continue;
             // 只有近战型才在此处理伤害（远程由 processRangedAttacks 处理）
             if (s.combatType === 'melee') {
-                s.target.takeDamage(s.attack * dt / 1000);
+                const dmg = s.attack * dt / 1000;
+                s.target.takeDamage(dmg);
                 s.takeDamage(s.target.attack * dt / 1000);
+                // 连锁闪电技能：攻击时跳跃到附近敌人
+                if (s.skill && s.skill.type === 'chain' && behavior.applyChainLightning) {
+                    behavior.applyChainLightning(s, s.target, dmg, enemies);
+                }
             }
+        }
+        // 近战敌人主动攻击士兵（处理敌人锁定远程士兵等情况）
+        for (const e of enemies) {
+            if (!e.alive || e.combatType !== 'melee' || !e.target || !e.target.alive) continue;
+            const eBehavior = COMBAT_BEHAVIORS[e.combatType];
+            if (!eBehavior || !eBehavior.canEngage(e, e.target)) continue;
+            // 避免与近战士兵重复计算（近战vs近战已在上面处理）
+            if (e.target.combatType === 'melee') continue;
+            const dmg = e.attack * dt / 1000;
+            e.target.takeDamage(dmg);
         }
     }
 
@@ -468,11 +516,16 @@ class Combat {
             if (!behavior || !behavior.canEngage(s, s.target)) continue;
             if ((now - s.lastAttackTime) >= s.attackInterval) {
                 s.lastAttackTime = now;
-                projectiles.push(new Projectile(
+                const proj = new Projectile(
                     s.x, s.y - s.size / 2,
                     s.target.x, s.target.y - s.target.size / 2,
                     s.attack, s.projectileSpeed, true
-                ));
+                );
+                // 携带技能信息供命中时使用
+                if (s.skill) {
+                    proj._sourceSkill = s.skill;
+                }
+                projectiles.push(proj);
             }
         }
         for (const e of enemies) {
@@ -493,10 +546,18 @@ class Combat {
     static processProjectiles(projectiles, soldiers, enemies) {
         for (const p of projectiles) {
             if (!p.alive) continue;
+            let hitTarget = null;
             if (p.fromFriendly) {
-                p.checkHit(enemies);
+                hitTarget = p.checkHit(enemies);
             } else {
-                p.checkHit(soldiers);
+                hitTarget = p.checkHit(soldiers);
+            }
+            // 冰霜减速技能：投射物命中时减缓敌人速度
+            if (hitTarget && p._sourceSkill && p._sourceSkill.type === 'slow') {
+                const rangedBehavior = COMBAT_BEHAVIORS['ranged'];
+                if (rangedBehavior && rangedBehavior.applySlowEffect) {
+                    rangedBehavior.applySlowEffect({ skill: p._sourceSkill }, hitTarget);
+                }
             }
         }
     }
@@ -853,13 +914,13 @@ class Renderer {
             ctx.stroke();
             // 棋子名称
             ctx.fillStyle = '#fff';
-            ctx.font = '9px sans-serif';
+            ctx.font = '12px sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillText(pin.chessPiece.type.name[0], pin.x, pin.y + 3);
+            ctx.fillText(pin.chessPiece.type.name[0], pin.x, pin.y + 4);
             // 等级标识
             const level = pin.chessPiece.level;
             ctx.fillStyle = level >= 5 ? '#FFD700' : '#ccc';
-            ctx.font = 'bold 8px sans-serif';
+            ctx.font = 'bold 10px sans-serif';
             ctx.textAlign = 'center';
             ctx.fillText('Lv.' + level, pin.x, pin.y - pin.radius - 3);
         }
@@ -1631,60 +1692,28 @@ class Game {
 }
 
 // ============================================================
-// 外部配置加载
+// 外部配置加载（从外部 JS 全局变量覆盖内置默认值）
 // ============================================================
-async function loadConfigs() {
-    try {
-        const res = await fetch('physics-config.json');
-        if (res.ok) {
-            const data = await res.json();
-            Object.assign(PhysicsConfig, data);
-            console.log('已加载外部物理参数配置');
-        }
-    } catch (e) {
-        console.warn('加载 physics-config.json 失败，使用内置默认配置', e);
+function loadConfigs() {
+    if (typeof PHYSICS_CONFIG_EXTERNAL !== 'undefined') {
+        Object.assign(PhysicsConfig, PHYSICS_CONFIG_EXTERNAL);
     }
-    try {
-        const res = await fetch('balance-config.json');
-        if (res.ok) {
-            const data = await res.json();
-            Object.assign(BalanceConfig, data);
-            console.log('已加载外部平衡参数配置');
-        }
-    } catch (e) {
-        console.warn('加载 balance-config.json 失败，使用内置默认配置', e);
+    if (typeof BALANCE_CONFIG_EXTERNAL !== 'undefined') {
+        Object.assign(BalanceConfig, BALANCE_CONFIG_EXTERNAL);
     }
-    try {
-        const res = await fetch('piece-config.json');
-        if (res.ok) {
-            const data = await res.json();
-            PIECE_TYPES = data;
-            PIECE_TYPE_LIST = Object.values(PIECE_TYPES);
-            console.log('已加载外部棋子配置');
-        }
-    } catch (e) {
-        console.warn('加载 piece-config.json 失败，使用内置默认配置', e);
+    if (typeof LEVEL_CONFIG_EXTERNAL !== 'undefined') {
+        Object.assign(LevelConfig, LEVEL_CONFIG_EXTERNAL);
     }
-    try {
-        const res = await fetch('enemy-config.json');
-        if (res.ok) {
-            const data = await res.json();
-            ENEMY_TYPES = data;
-            ENEMY_TYPE_LIST = Object.values(ENEMY_TYPES);
-            console.log('已加载外部敌人配置');
-        }
-    } catch (e) {
-        console.warn('加载 enemy-config.json 失败，使用内置默认配置', e);
+    if (typeof PIECE_CONFIG_EXTERNAL !== 'undefined') {
+        PIECE_TYPES = PIECE_CONFIG_EXTERNAL;
+        PIECE_TYPE_LIST = Object.values(PIECE_TYPES);
     }
-    try {
-        const res = await fetch('wave-config.json');
-        if (res.ok) {
-            const data = await res.json();
-            WAVE_CONFIGS = data;
-            console.log('已加载外部波次配置');
-        }
-    } catch (e) {
-        console.warn('加载 wave-config.json 失败，使用内置默认配置', e);
+    if (typeof ENEMY_CONFIG_EXTERNAL !== 'undefined') {
+        ENEMY_TYPES = ENEMY_CONFIG_EXTERNAL;
+        ENEMY_TYPE_LIST = Object.values(ENEMY_TYPES);
+    }
+    if (typeof WAVE_CONFIG_EXTERNAL !== 'undefined') {
+        WAVE_CONFIGS = WAVE_CONFIG_EXTERNAL;
     }
 }
 
@@ -1694,10 +1723,9 @@ async function loadConfigs() {
 const canvas = document.getElementById('gameCanvas');
 const game = new Game(canvas);
 
-loadConfigs().then(() => {
-    game.init();
-    game.start();
-});
+loadConfigs();
+game.init();
+game.start();
 
 // 按钮事件
 document.getElementById('btn-pause').addEventListener('click', () => game.pause());

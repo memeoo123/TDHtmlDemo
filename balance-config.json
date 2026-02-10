@@ -1,9 +1,0 @@
-{
-    "meleeRange": 16,
-    "enemySpawnInterval": 3000,
-    "maxBalls": 100,
-    "maxSoldiers": 50,
-    "maxEnemies": 30,
-    "projectileRadius": 3,
-    "unitSize": 12
-}

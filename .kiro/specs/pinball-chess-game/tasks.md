@@ -86,18 +86,18 @@
     - **Property 37: 棋子等级始终在有效范围内**
     - **Validates: Requirements 15.1, 15.2, 15.3**
 
-- [ ] 26. 实现升级属性传递与 5 级技能
-  - [ ] 26.1 在 `piece-config.json` 中为每种棋子类型新增 `skill` 字段
+- [x] 26. 实现升级属性传递与 5 级技能
+  - [x] 26.1 在 `piece-config.json` 中为每种棋子类型新增 `skill` 字段
     - FIRE: `{ "name": "烈焰光环", "type": "aura", "damagePerSecond": 0.5, "radius": 40 }`
     - ICE: `{ "name": "冰霜减速", "type": "slow", "slowFactor": 0.5, "duration": 2000 }`
     - THUNDER: `{ "name": "连锁闪电", "type": "chain", "chainCount": 2, "chainDamageRatio": 0.5, "chainRange": 60 }`
     - _Requirements: 15.6_
-  - [ ] 26.2 在 `combat-behaviors.js` 中集成 5 级技能效果
+  - [x] 26.2 在 `combat-behaviors.js` 中集成 5 级技能效果
     - melee 策略的 move/攻击逻辑中检查 `soldier.skill`，若为 aura 类型则对范围内敌人施加持续伤害
     - ranged 策略的攻击逻辑中检查 `soldier.skill`，若为 slow 类型则减缓被击中敌人的速度
     - melee 策略中检查 chain 类型技能，攻击时闪电跳跃到附近敌人
     - _Requirements: 15.6_
-  - [ ] 26.3 修改 `Soldier` 构造函数，支持技能属性传递
+  - [x] 26.3 修改 `Soldier` 构造函数，支持技能属性传递
     - 从 Ball 的 type 中读取 skill 字段（仅 5 级棋子的弹球携带 skill）
     - 将 skill 存储在 Soldier 实例上供战斗行为策略使用
     - _Requirements: 15.5, 15.6_
