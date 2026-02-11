@@ -3,53 +3,53 @@ const WAVE_CONFIG_EXTERNAL = [
     {
         wave: 1,
         enemies: [
-            { type: 'GRUNT', count: 6 }
+            { type: 'GRUNT', count: 30 }
         ],
-        spawnInterval: 3000
+        spawnInterval: 1050
     },
     {
         wave: 2,
         enemies: [
-            { type: 'GRUNT', count: 8 },
-            { type: 'ARCHER', count: 4 }
+            { type: 'GRUNT', count: 40 },
+            { type: 'ARCHER', count: 20 }
         ],
-        spawnInterval: 2500
+        spawnInterval: 875
     },
     {
         wave: 3,
         enemies: [
-            { type: 'GRUNT', count: 8 },
-            { type: 'ARCHER', count: 5 },
-            { type: 'ASSASSIN', count: 3 }
+            { type: 'GRUNT', count: 36 },
+            { type: 'ARCHER', count: 24 },
+            { type: 'ASSASSIN', count: 16 }
         ],
-        spawnInterval: 2200
+        spawnInterval: 770
     },
     {
         wave: 4,
         enemies: [
-            { type: 'BRUTE', count: 3 },
-            { type: 'CROSSBOW', count: 4 },
-            { type: 'GRUNT', count: 6 }
+            { type: 'BRUTE', count: 16 },
+            { type: 'CROSSBOW', count: 20 },
+            { type: 'GRUNT', count: 30 }
         ],
-        spawnInterval: 2000
+        spawnInterval: 700
     },
     {
         wave: 5,
         enemies: [
-            { type: 'SHIELDBEARER', count: 3 },
-            { type: 'MAGE', count: 4 },
-            { type: 'ASSASSIN', count: 5 }
+            { type: 'SHIELDBEARER', count: 12 },
+            { type: 'MAGE', count: 20 },
+            { type: 'ASSASSIN', count: 24 }
         ],
-        spawnInterval: 1800
+        spawnInterval: 630
     },
     {
         wave: 6,
         enemies: [
-            { type: 'BRUTE', count: 5 },
-            { type: 'MAGE', count: 5 },
-            { type: 'CROSSBOW', count: 4 },
-            { type: 'SHIELDBEARER', count: 2 }
+            { type: 'BRUTE', count: 20 },
+            { type: 'MAGE', count: 24 },
+            { type: 'CROSSBOW', count: 20 },
+            { type: 'SHIELDBEARER', count: 10 }
         ],
-        spawnInterval: 1500
+        spawnInterval: 525
     }
 ];

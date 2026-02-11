@@ -4,7 +4,8 @@ const STAGES_CONFIG_EXTERNAL = [
     {
         "id": 1,
         "name": "新手试炼",
-        "initialGold": 40,
+        "initialGold": 50,
+        "playerHP": 25,
         "boardConfig": {
             "width": 600,
             "height": 700,
@@ -25,11 +26,11 @@ const STAGES_CONFIG_EXTERNAL = [
                 "enemies": [
                     {
                         "type": "ARCHER",
-                        "count": 6
+                        "count": 5
                     },
                     {
                         "type": "CROSSBOW",
-                        "count": 4
+                        "count": 3
                     }
                 ],
                 "spawnInterval": 3200
@@ -39,11 +40,11 @@ const STAGES_CONFIG_EXTERNAL = [
                 "enemies": [
                     {
                         "type": "ARCHER",
-                        "count": 8
+                        "count": 5
                     },
                     {
                         "type": "CROSSBOW",
-                        "count": 6
+                        "count": 5
                     }
                 ],
                 "spawnInterval": 2950
@@ -53,15 +54,15 @@ const STAGES_CONFIG_EXTERNAL = [
                 "enemies": [
                     {
                         "type": "ARCHER",
-                        "count": 9
+                        "count": 11
                     },
                     {
                         "type": "GRUNT",
-                        "count": 3
+                        "count": 2
                     },
                     {
                         "type": "SHIELDBEARER",
-                        "count": 3
+                        "count": 1
                     }
                 ],
                 "spawnInterval": 2700
@@ -71,11 +72,11 @@ const STAGES_CONFIG_EXTERNAL = [
                 "enemies": [
                     {
                         "type": "ARCHER",
-                        "count": 14
+                        "count": 10
                     },
                     {
                         "type": "GRUNT",
-                        "count": 5
+                        "count": 4
                     },
                     {
                         "type": "SHIELDBEARER",
@@ -89,7 +90,7 @@ const STAGES_CONFIG_EXTERNAL = [
     {
         "id": 2,
         "name": "密林伏击",
-        "initialGold": 30,
+        "initialGold": 40,
         "boardConfig": {
             "width": 600,
             "height": 700,
@@ -110,7 +111,7 @@ const STAGES_CONFIG_EXTERNAL = [
                 "enemies": [
                     {
                         "type": "ARCHER",
-                        "count": 8
+                        "count": 5
                     },
                     {
                         "type": "CROSSBOW",
@@ -124,11 +125,11 @@ const STAGES_CONFIG_EXTERNAL = [
                 "enemies": [
                     {
                         "type": "ARCHER",
-                        "count": 12
+                        "count": 8
                     },
                     {
                         "type": "CROSSBOW",
-                        "count": 7
+                        "count": 6
                     }
                 ],
                 "spawnInterval": 2950
@@ -138,15 +139,15 @@ const STAGES_CONFIG_EXTERNAL = [
                 "enemies": [
                     {
                         "type": "ARCHER",
-                        "count": 13
+                        "count": 11
                     },
                     {
                         "type": "GRUNT",
-                        "count": 4
+                        "count": 3
                     },
                     {
                         "type": "SHIELDBEARER",
-                        "count": 3
+                        "count": 2
                     }
                 ],
                 "spawnInterval": 2700
@@ -156,15 +157,15 @@ const STAGES_CONFIG_EXTERNAL = [
                 "enemies": [
                     {
                         "type": "ARCHER",
-                        "count": 22
+                        "count": 17
                     },
                     {
                         "type": "GRUNT",
-                        "count": 5
+                        "count": 3
                     },
                     {
                         "type": "SHIELDBEARER",
-                        "count": 4
+                        "count": 3
                     }
                 ],
                 "spawnInterval": 2450
@@ -174,15 +175,15 @@ const STAGES_CONFIG_EXTERNAL = [
                 "enemies": [
                     {
                         "type": "ARCHER",
-                        "count": 36
+                        "count": 28
                     },
                     {
                         "type": "GRUNT",
-                        "count": 8
+                        "count": 6
                     },
                     {
                         "type": "SHIELDBEARER",
-                        "count": 3
+                        "count": 2
                     }
                 ],
                 "spawnInterval": 2200
@@ -192,7 +193,7 @@ const STAGES_CONFIG_EXTERNAL = [
     {
         "id": 3,
         "name": "烈焰熔炉",
-        "initialGold": 30,
+        "initialGold": 40,
         "boardConfig": {
             "width": 600,
             "height": 700,
@@ -217,7 +218,7 @@ const STAGES_CONFIG_EXTERNAL = [
                     },
                     {
                         "type": "CROSSBOW",
-                        "count": 6
+                        "count": 4
                     }
                 ],
                 "spawnInterval": 3200
@@ -231,7 +232,7 @@ const STAGES_CONFIG_EXTERNAL = [
                     },
                     {
                         "type": "CROSSBOW",
-                        "count": 10
+                        "count": 7
                     }
                 ],
                 "spawnInterval": 2950
@@ -241,7 +242,7 @@ const STAGES_CONFIG_EXTERNAL = [
                 "enemies": [
                     {
                         "type": "ARCHER",
-                        "count": 21
+                        "count": 17
                     },
                     {
                         "type": "GRUNT",
@@ -249,7 +250,7 @@ const STAGES_CONFIG_EXTERNAL = [
                     },
                     {
                         "type": "SHIELDBEARER",
-                        "count": 3
+                        "count": 2
                     }
                 ],
                 "spawnInterval": 2700
@@ -259,11 +260,11 @@ const STAGES_CONFIG_EXTERNAL = [
                 "enemies": [
                     {
                         "type": "ARCHER",
-                        "count": 28
+                        "count": 23
                     },
                     {
                         "type": "GRUNT",
-                        "count": 7
+                        "count": 4
                     },
                     {
                         "type": "SHIELDBEARER",
@@ -277,11 +278,11 @@ const STAGES_CONFIG_EXTERNAL = [
                 "enemies": [
                     {
                         "type": "ARCHER",
-                        "count": 41
+                        "count": 28
                     },
                     {
                         "type": "GRUNT",
-                        "count": 8
+                        "count": 6
                     },
                     {
                         "type": "SHIELDBEARER",
@@ -299,15 +300,15 @@ const STAGES_CONFIG_EXTERNAL = [
                     },
                     {
                         "type": "CROSSBOW",
-                        "count": 21
+                        "count": 11
                     },
                     {
                         "type": "GRUNT",
-                        "count": 6
+                        "count": 5
                     },
                     {
                         "type": "MAGE",
-                        "count": 8
+                        "count": 5
                     }
                 ],
                 "spawnInterval": 1950
@@ -317,7 +318,8 @@ const STAGES_CONFIG_EXTERNAL = [
     {
         "id": 4,
         "name": "暗影要塞",
-        "initialGold": 20,
+        "initialGold": 30,
+        "playerHP": 15,
         "boardConfig": {
             "width": 600,
             "height": 700,
@@ -338,7 +340,7 @@ const STAGES_CONFIG_EXTERNAL = [
                 "enemies": [
                     {
                         "type": "ARCHER",
-                        "count": 12
+                        "count": 7
                     },
                     {
                         "type": "CROSSBOW",
@@ -352,11 +354,11 @@ const STAGES_CONFIG_EXTERNAL = [
                 "enemies": [
                     {
                         "type": "ARCHER",
-                        "count": 16
+                        "count": 14
                     },
                     {
                         "type": "CROSSBOW",
-                        "count": 9
+                        "count": 6
                     }
                 ],
                 "spawnInterval": 2950
@@ -366,15 +368,15 @@ const STAGES_CONFIG_EXTERNAL = [
                 "enemies": [
                     {
                         "type": "ARCHER",
-                        "count": 25
+                        "count": 15
                     },
                     {
                         "type": "CROSSBOW",
-                        "count": 7
+                        "count": 5
                     },
                     {
                         "type": "GRUNT",
-                        "count": 4
+                        "count": 6
                     }
                 ],
                 "spawnInterval": 2700
@@ -384,7 +386,7 @@ const STAGES_CONFIG_EXTERNAL = [
                 "enemies": [
                     {
                         "type": "ARCHER",
-                        "count": 34
+                        "count": 21
                     },
                     {
                         "type": "GRUNT",
@@ -392,7 +394,7 @@ const STAGES_CONFIG_EXTERNAL = [
                     },
                     {
                         "type": "SHIELDBEARER",
-                        "count": 5
+                        "count": 4
                     }
                 ],
                 "spawnInterval": 2450
@@ -402,15 +404,15 @@ const STAGES_CONFIG_EXTERNAL = [
                 "enemies": [
                     {
                         "type": "ARCHER",
-                        "count": 39
+                        "count": 34
                     },
                     {
                         "type": "GRUNT",
-                        "count": 16
+                        "count": 10
                     },
                     {
                         "type": "SHIELDBEARER",
-                        "count": 7
+                        "count": 6
                     }
                 ],
                 "spawnInterval": 2200
@@ -420,19 +422,19 @@ const STAGES_CONFIG_EXTERNAL = [
                 "enemies": [
                     {
                         "type": "ARCHER",
-                        "count": 58
+                        "count": 40
                     },
                     {
                         "type": "CROSSBOW",
-                        "count": 22
+                        "count": 17
                     },
                     {
                         "type": "GRUNT",
-                        "count": 12
+                        "count": 10
                     },
                     {
                         "type": "MAGE",
-                        "count": 10
+                        "count": 9
                     }
                 ],
                 "spawnInterval": 1950
@@ -442,19 +444,19 @@ const STAGES_CONFIG_EXTERNAL = [
                 "enemies": [
                     {
                         "type": "ARCHER",
-                        "count": 119
+                        "count": 96
                     },
                     {
                         "type": "CROSSBOW",
-                        "count": 30
+                        "count": 21
                     },
                     {
                         "type": "GRUNT",
-                        "count": 12
+                        "count": 8
                     },
                     {
                         "type": "MAGE",
-                        "count": 7
+                        "count": 6
                     }
                 ],
                 "spawnInterval": 1700

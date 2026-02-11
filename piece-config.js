@@ -3,7 +3,7 @@ const PIECE_CONFIG_EXTERNAL = {
     FIRE: {
         name: '火战士',
         color: '#FF4444',
-        fireInterval: 2000,
+        fireInterval: 12000,
         ballSpeed: 3,
         combatType: 'melee',
         soldierHP: 5,
@@ -20,7 +20,7 @@ const PIECE_CONFIG_EXTERNAL = {
     ICE: {
         name: '冰法师',
         color: '#44AAFF',
-        fireInterval: 3000,
+        fireInterval: 18000,
         ballSpeed: 2,
         combatType: 'ranged',
         soldierHP: 3,
@@ -40,7 +40,7 @@ const PIECE_CONFIG_EXTERNAL = {
     THUNDER: {
         name: '雷战士',
         color: '#FFDD44',
-        fireInterval: 1500,
+        fireInterval: 8800,
         ballSpeed: 4,
         combatType: 'melee',
         soldierHP: 3,
@@ -58,7 +58,7 @@ const PIECE_CONFIG_EXTERNAL = {
     EARTH: {
         name: '岩卫士',
         color: '#AA7744',
-        fireInterval: 3500,
+        fireInterval: 20800,
         ballSpeed: 2,
         combatType: 'melee',
         soldierHP: 10,
@@ -75,7 +75,7 @@ const PIECE_CONFIG_EXTERNAL = {
     WIND: {
         name: '风行者',
         color: '#88DDAA',
-        fireInterval: 1200,
+        fireInterval: 7200,
         ballSpeed: 5,
         combatType: 'ranged',
         soldierHP: 2,
@@ -95,7 +95,7 @@ const PIECE_CONFIG_EXTERNAL = {
     DARK: {
         name: '暗影刺客',
         color: '#9944CC',
-        fireInterval: 2500,
+        fireInterval: 14800,
         ballSpeed: 3.5,
         combatType: 'melee',
         soldierHP: 3,
@@ -113,7 +113,7 @@ const PIECE_CONFIG_EXTERNAL = {
     HOLY: {
         name: '圣光牧师',
         color: '#FFEEAA',
-        fireInterval: 3200,
+        fireInterval: 19200,
         ballSpeed: 2.5,
         combatType: 'ranged',
         soldierHP: 4,
@@ -133,7 +133,7 @@ const PIECE_CONFIG_EXTERNAL = {
     POISON: {
         name: '毒蛇术士',
         color: '#66CC44',
-        fireInterval: 2800,
+        fireInterval: 16800,
         ballSpeed: 2.8,
         combatType: 'ranged',
         soldierHP: 3,

@@ -15,7 +15,7 @@ inclusion: auto
 | 碰撞钉 | Collision_Pin | 未放置棋子的空点位，作为传统弹球碰撞障碍物 |
 | 发射器 | Launcher | 位于弹球台底部，玩家手动发射弹球的组件 |
 | 棋子类型 | PieceType | 棋子的分类属性（FIRE/ICE/THUNDER/EARTH/WIND/DARK/HOLY/POISON），决定弹球外观和行为 |
-| 士兵 | Soldier | 弹球落到地面后转化的地面单位，继承弹球类型，向右移动 |
+| 士兵 | Soldier | 弹球落到地面后转化的地面单位，继承弹球类型，智能追踪敌人，无敌人时右边界待命 |
 | 敌人 | Enemy | 从右侧生成的敌方单位，向左移动，与士兵战斗 |
 | 投射物 | Projectile | 远程型单位发射的攻击弹体 |
 | 波次 | Wave | 游戏推进的基本单位，每波包含预定义的敌人配置 |
@@ -43,9 +43,13 @@ inclusion: auto
 | 弩手 | CROSSBOW | 远程速射型敌人，高攻速高弹速 |
 | 关卡 | Stage | 游戏的独立关卡单元，每关包含专属的弹球台配置和波次配置 |
 | 关卡选择界面 | Level_Select_Screen | 游戏启动时显示的关卡列表界面，玩家点击选择关卡后进入游戏 |
-| 关卡配置 | Stage_Config | 单个关卡的完整配置数据，包含 id、name、initialGold、boardConfig、waveConfig |
+| 关卡配置 | Stage_Config | 单个关卡的完整配置数据，包含 id、name、initialGold、playerHP、boardConfig、waveConfig |
 | 初始金币 | Initial_Gold | 关卡开始时玩家拥有的金币数量，定义在 Stage_Config 的 `initialGold` 字段中，`selectStage()` 加载后覆盖 Shop 默认值 |
 | 游戏画面状态 | Game_Screen | Game 类的 `gameScreen` 属性，值为 `'level-select'` 或 `'playing'` |
+| 玩家血量 | Player_HP | 玩家当前生命值，敌人突破防线时扣除，归零则游戏失败 |
+| 泄漏伤害 | Leak_Damage | 敌人走出屏幕左侧时扣除的血量，定义在 Enemy_Config 的 `leakDamage` 字段中 |
+| 游戏失败 | Game_Over | 玩家血量归零后的游戏状态，停止战斗循环并显示失败界面 |
+| 智能追踪 | Smart_Tracking | 士兵的新移动行为：双向追踪最近敌人，无敌人时右边界待命 |
 
 ## 架构约定
 
@@ -74,6 +78,9 @@ inclusion: auto
 - 游戏启动流程：启动 → 关卡选择界面（level-select）→ 选择关卡 → 用该关卡的 boardConfig/waveConfig 初始化游戏 → 进入整备阶段 → 战斗 → 所有波次完成后可返回选关界面
 - 关卡配置优先级：`STAGES_CONFIG_EXTERNAL` 存在且非空时优先使用关卡配置；加载失败或为空时回退用 `BOARD_CONFIG_EXTERNAL` + `WAVE_CONFIG_EXTERNAL` 构造默认单关卡
 - `selectStage()` 会用关卡的 boardConfig 覆盖 `BoardConfig`、用 waveConfig 覆盖 `WAVE_CONFIGS`，然后重新初始化弹球台点位网格
+- 敌人走出屏幕左侧时扣除 `leakDamage` 点玩家血量（默认 1），血量归零触发 Game Over；`selectStage()` 从关卡配置读取 `playerHP`（默认 20）初始化血量
+- 士兵通过 `isSoldier = true` 标识区分敌人，`COMBAT_BEHAVIORS` 的 move/findTarget/canEngage 根据此标识分支处理：士兵双向追踪最近敌人、右边界钳制（`x ≤ BoardConfig.width - 6`）、无敌人时原地待命（不移动）；敌人行为不变
+- `enemy-config.js` 中每种敌人类型包含 `leakDamage` 字段，定义突破时扣除的血量
 
 ## 测试约定
 

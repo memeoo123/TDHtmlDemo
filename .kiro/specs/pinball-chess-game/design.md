@@ -469,6 +469,381 @@ handleMouseDown(e) {
 - 当 `STAGES_CONFIG_EXTERNAL` 存在且非空时，游戏优先使用关卡配置
 - 每个关卡的 `boardConfig` 和 `waveConfig` 完全独立，互不影响
 
+## 未完成设计：玩家血量与游戏失败机制
+
+### 概述
+
+引入玩家血量（Player_HP）系统，当敌人突破防线走出屏幕左侧时扣除对应的泄漏伤害，血量归零则游戏失败。为玩家提供紧迫感和策略压力。
+
+### 数据模型变更
+
+#### Game 类扩展
+
+```javascript
+class Game {
+    constructor() {
+        // ... 现有属性
+        this.playerHP = 20;        // 当前玩家血量
+        this.maxPlayerHP = 20;     // 最大血量（用于血条显示）
+        this.isGameOver = false;   // 游戏失败标志
+    }
+}
+```
+
+#### Enemy_Config 扩展
+
+在 `enemy-config.js` 中为每种敌人类型新增 `leakDamage` 字段：
+
+```javascript
+const ENEMY_CONFIG_EXTERNAL = {
+    GRUNT:       { ..., leakDamage: 1 },
+    ARCHER:      { ..., leakDamage: 1 },
+    BRUTE:       { ..., leakDamage: 2 },
+    ASSASSIN:    { ..., leakDamage: 1 },
+    MAGE:        { ..., leakDamage: 2 },
+    SHIELDBEARER:{ ..., leakDamage: 3 },
+    CROSSBOW:    { ..., leakDamage: 1 }
+};
+```
+
+泄漏伤害设计原则：高 HP 的肉盾型敌人（BRUTE、SHIELDBEARER、MAGE）突破时扣血更多，普通敌人扣 1 点。
+
+#### Stage_Config 扩展
+
+在关卡配置中新增可选的 `playerHP` 字段：
+
+```javascript
+{
+    id: 1,
+    name: "新手试炼",
+    playerHP: 25,       // 可选，未配置时使用默认值 20
+    initialGold: 50,
+    boardConfig: { ... },
+    waveConfig: [ ... ]
+}
+```
+
+### 血量初始化流程
+
+在 `selectStage()` 中初始化血量：
+
+```javascript
+selectStage(stageIndex) {
+    const stage = this.stages[stageIndex];
+    // ... 现有逻辑
+
+    // 初始化血量
+    const hp = stage.playerHP || 20;
+    this.playerHP = hp;
+    this.maxPlayerHP = hp;
+    this.isGameOver = false;
+}
+```
+
+### 敌人泄漏检测
+
+在 `Game.update()` 的敌人更新循环中检测敌人是否走出左边界：
+
+```javascript
+// 在 enemies 更新循环中
+for (const enemy of this.enemies) {
+    enemy.update(dt);
+
+    // 泄漏检测：敌人完全走出屏幕左侧
+    if (enemy.alive && enemy.x + 6 < 0) {  // 6 = 单位半径，完全走出
+        const leakDamage = enemy.type.leakDamage || 1;
+        this.playerHP -= leakDamage;
+        enemy.alive = false;  // 移除该敌人
+
+        // 检查游戏失败
+        if (this.playerHP <= 0) {
+            this.playerHP = 0;
+            this.isGameOver = true;
+        }
+    }
+}
+```
+
+### 游戏失败状态处理
+
+```javascript
+// Game.update() 开头检查
+update(dt) {
+    if (this.isGameOver) return;  // 停止战斗循环
+    // ... 现有更新逻辑
+}
+```
+
+### 失败界面渲染
+
+在 Renderer 中新增游戏失败界面绘制：
+
+```javascript
+drawGameOverScreen(canvas, ctx) {
+    // 半透明黑色遮罩
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // "游戏失败" 文字
+    ctx.fillStyle = '#FF4444';
+    ctx.font = 'bold 48px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('游戏失败', canvas.width / 2, canvas.height / 2 - 30);
+
+    // "返回选关" 按钮
+    // ... 绘制可点击按钮
+}
+```
+
+### 血量 HUD 显示
+
+在战斗区域（地面区域上方）显示血量信息：
+
+```javascript
+drawPlayerHP(ctx, playerHP, maxPlayerHP) {
+    // 在地面区域左上角绘制血条
+    const barX = 10, barY = BoardConfig.groundY + 5;
+    const barWidth = 100, barHeight = 12;
+    const ratio = playerHP / maxPlayerHP;
+
+    // 背景
+    ctx.fillStyle = '#333';
+    ctx.fillRect(barX, barY, barWidth, barHeight);
+
+    // 血量条（绿→黄→红渐变）
+    ctx.fillStyle = ratio > 0.5 ? '#44CC44' : ratio > 0.25 ? '#CCCC44' : '#CC4444';
+    ctx.fillRect(barX, barY, barWidth * ratio, barHeight);
+
+    // 数字
+    ctx.fillStyle = '#FFF';
+    ctx.font = '10px sans-serif';
+    ctx.fillText(`HP: ${playerHP}/${maxPlayerHP}`, barX + barWidth + 5, barY + 10);
+}
+```
+
+## 未完成设计：士兵智能追踪行为
+
+### 概述
+
+改变士兵的移动行为：从固定向右移动改为智能追踪。士兵不再走出屏幕右边界，而是在右边界待命；有敌人时自动朝最近敌人方向移动，支持双向移动。
+
+### 行为变更
+
+#### 当前行为（需替换）
+
+- `Soldier.direction` 固定为 1（向右）
+- 走出 `BoardConfig.width` 时被移除（`alive = false`）
+- `findTarget` 仅搜索面朝方向的目标
+
+#### 新行为
+
+- `Soldier.direction` 动态调整（1 或 -1），根据目标位置决定
+- 到达右边界时停下待命，不被移除
+- `findTarget` 搜索所有方向的最近敌人
+- 无目标时自动向右移动到边界待命
+
+### COMBAT_BEHAVIORS 修改
+
+#### melee 策略修改
+
+```javascript
+melee: {
+    move(unit, dt, context) {
+        // 仅对士兵应用智能追踪（敌人保持原有行为）
+        if (unit.isSoldier) {
+            if (unit.target && unit.target.alive) {
+                // 有目标：朝目标方向移动
+                const meleeRange = (typeof Combat !== 'undefined') ? Combat.MELEE_RANGE : 16;
+                if (Math.abs(unit.x - unit.target.x) >= meleeRange) {
+                    unit.direction = unit.target.x > unit.x ? 1 : -1;
+                    unit.x += unit.speed * unit.direction;
+                }
+                // 在接触距离内则不移动（等待攻击）
+            } else {
+                // 无目标：向右移动到边界待命
+                unit.direction = 1;
+                unit.x += unit.speed * unit.direction;
+                unit.target = null;
+            }
+
+            // 右边界钳制
+            if (unit.x > BoardConfig.width - 6) {
+                unit.x = BoardConfig.width - 6;
+            }
+        } else {
+            // 敌人：保持原有行为
+            if (!unit.target || !unit.target.alive) {
+                unit.x += unit.speed * unit.direction;
+                unit.target = null;
+            } else {
+                const meleeRange = (typeof Combat !== 'undefined') ? Combat.MELEE_RANGE : 16;
+                if (Math.abs(unit.x - unit.target.x) >= meleeRange) {
+                    unit.x += unit.speed * unit.direction;
+                }
+            }
+        }
+
+        // aura 技能逻辑保持不变
+        // ...
+    },
+
+    findTarget(unit, targets) {
+        if (unit.isSoldier) {
+            // 士兵：搜索所有方向的最近敌人
+            let closest = null;
+            let closestDist = Infinity;
+            for (const t of targets) {
+                if (!t.alive) continue;
+                const dist = Math.abs(t.x - unit.x);
+                if (dist < closestDist) {
+                    closestDist = dist;
+                    closest = t;
+                }
+            }
+            unit.target = closest;
+        } else {
+            // 敌人：保持原有行为（仅搜索面朝方向）
+            let closest = null;
+            let closestDist = Infinity;
+            for (const t of targets) {
+                if (!t.alive) continue;
+                const dist = (t.x - unit.x) * unit.direction;
+                if (dist > 0 && dist < closestDist) {
+                    closestDist = dist;
+                    closest = t;
+                }
+            }
+            unit.target = closest;
+        }
+    },
+
+    // canEngage 不变
+}
+```
+
+#### ranged 策略修改
+
+```javascript
+ranged: {
+    move(unit, dt, context) {
+        if (unit.isSoldier) {
+            if (unit.target && unit.target.alive) {
+                // 有目标且在攻击范围内：停下攻击
+                const dist = Math.abs(unit.x - unit.target.x);
+                if (dist <= unit.attackRange) {
+                    // 停下，面朝目标
+                    unit.direction = unit.target.x > unit.x ? 1 : -1;
+                } else {
+                    // 目标超出范围：朝目标移动
+                    unit.direction = unit.target.x > unit.x ? 1 : -1;
+                    unit.x += unit.speed * unit.direction;
+                }
+            } else {
+                // 无目标：向右移动到边界待命
+                unit.direction = 1;
+                unit.x += unit.speed * unit.direction;
+                unit.target = null;
+            }
+
+            // 右边界钳制
+            if (unit.x > BoardConfig.width - 6) {
+                unit.x = BoardConfig.width - 6;
+            }
+        } else {
+            // 敌人：保持原有行为
+            if (unit.target && unit.target.alive) {
+                // 在攻击范围内，停止移动
+            } else {
+                unit.x += unit.speed * unit.direction;
+                unit.target = null;
+            }
+        }
+    },
+
+    findTarget(unit, targets) {
+        if (unit.isSoldier) {
+            // 士兵：搜索所有方向的最近敌人（在攻击范围内优先）
+            let closest = null;
+            let closestDist = Infinity;
+            for (const t of targets) {
+                if (!t.alive) continue;
+                const dist = Math.abs(t.x - unit.x);
+                if (dist <= unit.attackRange && dist < closestDist) {
+                    closestDist = dist;
+                    closest = t;
+                }
+            }
+            // 如果范围内没有目标，搜索所有目标
+            if (!closest) {
+                closestDist = Infinity;
+                for (const t of targets) {
+                    if (!t.alive) continue;
+                    const dist = Math.abs(t.x - unit.x);
+                    if (dist < closestDist) {
+                        closestDist = dist;
+                        closest = t;
+                    }
+                }
+            }
+            unit.target = closest;
+        } else {
+            // 敌人：保持原有行为（仅搜索面朝方向且在攻击范围内）
+            let closest = null;
+            let closestDist = Infinity;
+            for (const t of targets) {
+                if (!t.alive) continue;
+                const dist = (t.x - unit.x) * unit.direction;
+                if (dist > 0 && dist <= unit.attackRange && dist < closestDist) {
+                    closestDist = dist;
+                    closest = t;
+                }
+            }
+            unit.target = closest;
+        }
+    },
+
+    // canEngage 修改：士兵使用绝对距离判定
+    canEngage(unit, target) {
+        if (unit.isSoldier) {
+            return Math.abs(unit.x - target.x) <= unit.attackRange;
+        }
+        const dist = (target.x - unit.x) * unit.direction;
+        return dist > 0 && dist <= unit.attackRange;
+    },
+
+    // applySlowEffect 不变
+}
+```
+
+### Soldier 类修改
+
+```javascript
+class Soldier {
+    constructor(x, y, type) {
+        // ... 现有属性
+        this.direction = 1;       // 初始向右，但会动态调整
+        this.isSoldier = true;    // 新增：标识为士兵（区分敌人）
+    }
+
+    update(dt) {
+        // 移除原有的 "x > BoardConfig.width 时 alive = false" 逻辑
+        // 边界钳制由 COMBAT_BEHAVIORS 的 move 方法处理
+    }
+}
+```
+
+### 对 index.html 的影响
+
+1. `Soldier` 构造函数新增 `isSoldier = true`
+2. 移除 `Soldier.update()` 中 `x > BoardConfig.width` 时设置 `alive = false` 的逻辑
+3. `Game.update()` 中调用 `COMBAT_BEHAVIORS[].move()` 时传递 `context.enemies` 供技能和追踪使用
+
+### 对 combat-behaviors.js 的影响
+
+1. `melee.move()` 和 `melee.findTarget()` 增加 `unit.isSoldier` 分支
+2. `ranged.move()` 和 `ranged.findTarget()` 和 `ranged.canEngage()` 增加 `unit.isSoldier` 分支
+3. 敌人行为完全不变，通过 `isSoldier` 标志区分
+
 ## 正确性属性（未验证）
 
 > 已验证的属性（Property 1-31）已通过对应的属性测试确认，此处仅列出待验证属性。
@@ -537,6 +912,34 @@ handleMouseDown(e) {
 *对于任意*处于 playing 状态的游戏，执行返回关卡选择操作后，游戏画面状态应为 level-select，弹球列表、士兵列表、敌人列表应为空。
 **Validates: Requirements 16.7**
 
+### Property 48: 玩家血量初始化
+*对于任意*关卡配置（包含或不包含 `playerHP` 字段），选择该关卡后，玩家血量应等于配置的 `playerHP` 值；未配置时应等于默认值 20。
+**Validates: Requirements 17.1, 17.6**
+
+### Property 49: 敌人泄漏扣除血量
+*对于任意*处于战斗阶段的游戏状态和任意敌人类型，当该敌人走出屏幕左侧时，玩家血量应减少该敌人的 `leakDamage` 值，且该敌人应被移除（alive = false）。
+**Validates: Requirements 17.2**
+
+### Property 50: 血量归零触发游戏失败
+*对于任意*玩家血量 > 0 的游戏状态和任意泄漏伤害序列，当累计泄漏伤害使血量降至 0 或以下时，游戏应进入 Game_Over 状态（isGameOver = true），且 playerHP 钳制为 0。
+**Validates: Requirements 17.4**
+
+### Property 51: 士兵右边界钳制
+*对于任意*士兵位置和任意次数的更新，士兵的 x 坐标应始终不超过 `BoardConfig.width - 单位半径`，到达边界时停下而非被移除。
+**Validates: Requirements 18.1**
+
+### Property 52: 士兵双向追踪最近敌人
+*对于任意*士兵和任意存活敌人集合（非空），士兵的目标应为距离最近的敌人，且士兵的移动方向应朝向该目标（目标在左则 direction = -1，目标在右则 direction = 1）。
+**Validates: Requirements 18.2, 18.4**
+
+### Property 53: 无敌人时士兵向右待命
+*对于任意*士兵和空的敌人列表，执行 findTarget 和 move 后，士兵的 direction 应为 1（向右），且 target 应为 null。
+**Validates: Requirements 18.3**
+
+### Property 54: 远程士兵攻击范围内停止移动
+*对于任意*远程士兵和任意存活目标，当士兵与目标的距离 ≤ attackRange 时，士兵应停止移动（x 坐标不变），面朝目标方向。
+**Validates: Requirements 18.5**
+
 ## 错误处理
 
 - 弹球/士兵/敌人超出边界时强制修正或移除
@@ -549,6 +952,10 @@ handleMouseDown(e) {
 - 技能配置缺失时棋子正常运作但无技能效果
 - 关卡配置文件（stages-config.js）加载失败或为空时，回退使用现有 BOARD_CONFIG_EXTERNAL 和 WAVE_CONFIG_EXTERNAL 构造默认单关卡
 - 关卡 boardConfig 或 waveConfig 字段缺失时使用内置默认值补全
+- 敌人类型缺少 `leakDamage` 字段时使用默认值 1
+- 关卡配置缺少 `playerHP` 字段时使用默认值 20
+- 游戏失败（isGameOver = true）时 `update()` 立即返回，不执行任何更新逻辑
+- 玩家血量钳制为 ≥ 0，不会出现负数
 
 ## 测试策略
 

@@ -20,16 +20,33 @@ const COMBAT_BEHAVIORS = {
          * @param {object} [context] - 可选上下文，包含 enemies 列表供技能使用
          */
         move(unit, dt, context) {
-            if (!unit.target || !unit.target.alive) {
-                unit.x += unit.speed * unit.direction;
-                unit.target = null;
+            if (unit.isSoldier) {
+                // 士兵智能追踪行为
+                if (unit.target && unit.target.alive) {
+                    const meleeRange = (typeof Combat !== 'undefined') ? Combat.MELEE_RANGE : 16;
+                    if (Math.abs(unit.x - unit.target.x) >= meleeRange) {
+                        unit.direction = unit.target.x > unit.x ? 1 : -1;
+                        unit.x += unit.speed * unit.direction;
+                    }
+                } else {
+                    // 无目标：原地待命，不移动
+                    unit.target = null;
+                }
+                // 右边界钳制
+                unit.x = Math.min(unit.x, BoardConfig.width - 6);
             } else {
-                // 有目标但未进入接触距离时继续移动
-                const meleeRange = (typeof Combat !== 'undefined') ? Combat.MELEE_RANGE : 16;
-                if (Math.abs(unit.x - unit.target.x) >= meleeRange) {
+                // 敌人：保持原有行为
+                if (!unit.target || !unit.target.alive) {
                     unit.x += unit.speed * unit.direction;
+                    unit.target = null;
+                } else {
+                    const meleeRange = (typeof Combat !== 'undefined') ? Combat.MELEE_RANGE : 16;
+                    if (Math.abs(unit.x - unit.target.x) >= meleeRange) {
+                        unit.x += unit.speed * unit.direction;
+                    }
                 }
             }
+
 
             // aura 技能：烈焰光环 — 对范围内敌人施加持续伤害
             if (unit.skill && unit.skill.type === 'aura' && context && context.enemies) {
@@ -53,17 +70,33 @@ const COMBAT_BEHAVIORS = {
          * @param {Array} targets - 候选目标列表
          */
         findTarget(unit, targets) {
-            let closest = null;
-            let closestDist = Infinity;
-            for (const t of targets) {
-                if (!t.alive) continue;
-                const dist = (t.x - unit.x) * unit.direction;
-                if (dist > 0 && dist < closestDist) {
-                    closestDist = dist;
-                    closest = t;
+            if (unit.isSoldier) {
+                // 士兵：搜索所有方向的最近敌人
+                let closest = null;
+                let closestDist = Infinity;
+                for (const t of targets) {
+                    if (!t.alive) continue;
+                    const dist = Math.abs(t.x - unit.x);
+                    if (dist < closestDist) {
+                        closestDist = dist;
+                        closest = t;
+                    }
                 }
+                unit.target = closest;
+            } else {
+                // 敌人：保持原有行为（仅搜索面朝方向）
+                let closest = null;
+                let closestDist = Infinity;
+                for (const t of targets) {
+                    if (!t.alive) continue;
+                    const dist = (t.x - unit.x) * unit.direction;
+                    if (dist > 0 && dist < closestDist) {
+                        closestDist = dist;
+                        closest = t;
+                    }
+                }
+                unit.target = closest;
             }
-            unit.target = closest;
         },
 
         /**
@@ -130,11 +163,32 @@ const COMBAT_BEHAVIORS = {
          * 移动逻辑：范围内有存活目标则停下，否则移动
          */
         move(unit, dt, context) {
-            if (unit.target && unit.target.alive) {
-                // 在攻击范围内，停止移动
+            if (unit.isSoldier) {
+                // 士兵智能追踪行为
+                if (unit.target && unit.target.alive) {
+                    const dist = Math.abs(unit.x - unit.target.x);
+                    if (dist <= unit.attackRange) {
+                        // 在攻击范围内：停下，面朝目标
+                        unit.direction = unit.target.x > unit.x ? 1 : -1;
+                    } else {
+                        // 超出范围：朝目标移动
+                        unit.direction = unit.target.x > unit.x ? 1 : -1;
+                        unit.x += unit.speed * unit.direction;
+                    }
+                } else {
+                    // 无目标：原地待命，不移动
+                    unit.target = null;
+                }
+                // 右边界钳制
+                unit.x = Math.min(unit.x, BoardConfig.width - 6);
             } else {
-                unit.x += unit.speed * unit.direction;
-                unit.target = null;
+                // 敌人：保持原有行为
+                if (unit.target && unit.target.alive) {
+                    // 在攻击范围内，停止移动
+                } else {
+                    unit.x += unit.speed * unit.direction;
+                    unit.target = null;
+                }
             }
         },
 
@@ -142,23 +196,54 @@ const COMBAT_BEHAVIORS = {
          * 目标搜索：仅搜索攻击范围内的目标
          */
         findTarget(unit, targets) {
-            let closest = null;
-            let closestDist = Infinity;
-            for (const t of targets) {
-                if (!t.alive) continue;
-                const dist = (t.x - unit.x) * unit.direction;
-                if (dist > 0 && dist <= unit.attackRange && dist < closestDist) {
-                    closestDist = dist;
-                    closest = t;
+            if (unit.isSoldier) {
+                // 士兵：优先搜索攻击范围内最近敌人
+                let closest = null;
+                let closestDist = Infinity;
+                for (const t of targets) {
+                    if (!t.alive) continue;
+                    const dist = Math.abs(t.x - unit.x);
+                    if (dist <= unit.attackRange && dist < closestDist) {
+                        closestDist = dist;
+                        closest = t;
+                    }
                 }
+                // 范围内没有目标，搜索所有方向最近敌人
+                if (!closest) {
+                    closestDist = Infinity;
+                    for (const t of targets) {
+                        if (!t.alive) continue;
+                        const dist = Math.abs(t.x - unit.x);
+                        if (dist < closestDist) {
+                            closestDist = dist;
+                            closest = t;
+                        }
+                    }
+                }
+                unit.target = closest;
+            } else {
+                // 敌人：保持原有行为（仅搜索面朝方向且在攻击范围内）
+                let closest = null;
+                let closestDist = Infinity;
+                for (const t of targets) {
+                    if (!t.alive) continue;
+                    const dist = (t.x - unit.x) * unit.direction;
+                    if (dist > 0 && dist <= unit.attackRange && dist < closestDist) {
+                        closestDist = dist;
+                        closest = t;
+                    }
+                }
+                unit.target = closest;
             }
-            unit.target = closest;
         },
 
         /**
          * 交战判定：目标在攻击范围内
          */
         canEngage(unit, target) {
+            if (unit.isSoldier) {
+                return Math.abs(unit.x - target.x) <= unit.attackRange;
+            }
             const dist = (target.x - unit.x) * unit.direction;
             return dist > 0 && dist <= unit.attackRange;
         },

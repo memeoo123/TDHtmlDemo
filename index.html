@@ -315,6 +315,7 @@ class Soldier {
         this.target = null;
         this.size = BalanceConfig.unitSize;
         this.direction = 1; // 士兵向右移动
+        this.isSoldier = true; // 标识为士兵（区分敌人）
         // 5 级棋子的弹球携带技能，传递给士兵
         this.skill = type.skill || null;
     }
@@ -324,10 +325,6 @@ class Soldier {
         if (behavior) {
             behavior.findTarget(this, enemies);
             behavior.move(this, dt, { enemies: enemies });
-        }
-        // 超出右边界移除
-        if (this.x > BoardConfig.width) {
-            this.alive = false;
         }
     }
     takeDamage(dmg) {
@@ -1247,6 +1244,33 @@ class Renderer {
             ctx.fillText('剩余敌人: ' + remaining, BoardConfig.wallThickness + 6, BoardConfig.wallThickness + 36);
         }
     }
+
+    drawPlayerHP(ctx, playerHP, maxPlayerHP) {
+        const barX = 10;
+        const barY = BoardConfig.groundY + 5;
+        const barWidth = 100;
+        const barHeight = 12;
+        const ratio = maxPlayerHP > 0 ? playerHP / maxPlayerHP : 0;
+
+        // 背景
+        ctx.fillStyle = '#333';
+        ctx.fillRect(barX, barY, barWidth, barHeight);
+
+        // 血量条（绿→黄→红渐变）
+        ctx.fillStyle = ratio > 0.5 ? '#44CC44' : ratio > 0.25 ? '#CCCC44' : '#CC4444';
+        ctx.fillRect(barX, barY, barWidth * ratio, barHeight);
+
+        // 边框
+        ctx.strokeStyle = '#666';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(barX, barY, barWidth, barHeight);
+
+        // 数字
+        ctx.fillStyle = '#FFF';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('HP: ' + playerHP + '/' + maxPlayerHP, barX + barWidth + 5, barY + 10);
+    }
 }
 
 // ============================================================
@@ -1406,6 +1430,9 @@ class Game {
         this.gameScreen = 'level-select'; // 'level-select' | 'playing'
         this.stages = [];
         this.currentStageIndex = -1;
+        this.playerHP = 20;
+        this.maxPlayerHP = 20;
+        this.isGameOver = false;
         this.waveManager.onClearBattlefield = () => {
             this.balls = [];
             this.soldiers = [];
@@ -1535,6 +1562,12 @@ class Game {
             this.shop.gold = stage.initialGold;
         }
 
+        // 初始化玩家血量
+        const hp = stage.playerHP || 20;
+        this.playerHP = hp;
+        this.maxPlayerHP = hp;
+        this.isGameOver = false;
+
         // 切换到游戏画面
         this.gameScreen = 'playing';
         this.waveManager.startShopPhase();
@@ -1610,6 +1643,12 @@ class Game {
 
         // 关卡选择界面不更新游戏逻辑
         if (this.gameScreen === 'level-select') return;
+
+        // 游戏失败，不再更新
+        if (this.isGameOver) {
+            this._updateUI();
+            return;
+        }
 
         // 游戏已胜利，不再更新
         if (this.gameWon) {
@@ -1697,11 +1736,18 @@ class Game {
             }
         }
 
-        // 敌人突破防线
+        // 敌人泄漏检测：走出屏幕左侧扣除血量
         for (const e of this.enemies) {
-            if (e.alive && e.x <= BoardConfig.wallThickness) {
+            if (e.alive && e.x + BalanceConfig.unitSize / 2 < 0) {
+                const leakDamage = e.enemyType.leakDamage || 1;
+                this.playerHP -= leakDamage;
                 e.alive = false;
                 this.breaches++;
+
+                if (this.playerHP <= 0) {
+                    this.playerHP = 0;
+                    this.isGameOver = true;
+                }
             }
         }
 
@@ -1780,6 +1826,9 @@ class Game {
             this.renderer.drawWaveInfo(this.waveManager, this.enemies);
         }
 
+        // 玩家血量 HUD
+        this.renderer.drawPlayerHP(this.ctx, this.playerHP, this.maxPlayerHP);
+
         // 拖拽预览
         if (this.dragManager.isDragging) {
             this.renderer.drawDragPreview(this.dragManager);
@@ -1826,6 +1875,35 @@ class Game {
             this._returnToSelectBtn = { x: btnX, y: btnY, w: btnW, h: btnH };
         } else {
             this._returnToSelectBtn = null;
+        }
+
+        // 游戏失败画面
+        if (this.isGameOver) {
+            const ctx = this.ctx;
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.fillRect(0, 0, BoardConfig.width, BoardConfig.height);
+            ctx.fillStyle = '#FF4444';
+            ctx.font = 'bold 48px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('游戏失败', BoardConfig.width / 2, BoardConfig.height / 2 - 30);
+            ctx.fillStyle = '#ccc';
+            ctx.font = '18px sans-serif';
+            ctx.fillText('得分: ' + this.score, BoardConfig.width / 2, BoardConfig.height / 2 + 10);
+            // 返回选关按钮
+            const btnW = 160;
+            const btnH = 36;
+            const btnX = BoardConfig.width / 2 - btnW / 2;
+            const btnY = BoardConfig.height / 2 + 40;
+            ctx.fillStyle = '#337ab7';
+            ctx.beginPath();
+            ctx.roundRect(btnX, btnY, btnW, btnH, 6);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 15px sans-serif';
+            ctx.fillText('返回选关', BoardConfig.width / 2, btnY + btnH / 2 + 5);
+            this._gameOverBackBtn = { x: btnX, y: btnY, w: btnW, h: btnH };
+        } else {
+            this._gameOverBackBtn = null;
         }
     }
 }
@@ -1908,6 +1986,15 @@ canvas.addEventListener('click', (e) => {
     if (game.gameWon && game._returnToSelectBtn) {
         const rb = game._returnToSelectBtn;
         if (mx >= rb.x && mx <= rb.x + rb.w && my >= rb.y && my <= rb.y + rb.h) {
+            game.returnToLevelSelect();
+            return;
+        }
+    }
+
+    // 游戏失败 "返回选关" 按钮
+    if (game.isGameOver && game._gameOverBackBtn) {
+        const gb = game._gameOverBackBtn;
+        if (mx >= gb.x && mx <= gb.x + gb.w && my >= gb.y && my <= gb.y + gb.h) {
             game.returnToLevelSelect();
             return;
         }

@@ -186,6 +186,69 @@
   - 确保所有测试通过，如有问题请询问用户。
   - 验证完整流程：启动显示选关界面 → 选择关卡 → 使用关卡配置进入游戏 → 完成波次后返回选关界面 → 选择另一关卡
 
+- [x] 32. 实现玩家血量与敌人泄漏伤害系统
+  - [x] 32.1 在 `enemy-config.js` 中为每种敌人类型新增 `leakDamage` 字段
+    - GRUNT: 1, ARCHER: 1, BRUTE: 2, ASSASSIN: 1, MAGE: 2, SHIELDBEARER: 3, CROSSBOW: 1
+    - _Requirements: 17.3_
+  - [x] 32.2 在 `stages-config.js` 中为关卡配置新增可选 `playerHP` 字段
+    - 为部分关卡配置不同的初始血量（如新手试炼 25，暗影要塞 15）
+    - _Requirements: 17.6_
+  - [x] 32.3 扩展 `Game` 类，新增 `playerHP`、`maxPlayerHP`、`isGameOver` 属性
+    - 在 constructor 中初始化 `playerHP = 20`、`maxPlayerHP = 20`、`isGameOver = false`
+    - 修改 `selectStage()` 方法：读取 `stage.playerHP || 20` 初始化血量和最大血量，重置 `isGameOver = false`
+    - _Requirements: 17.1, 17.6_
+  - [x] 32.4 实现敌人泄漏检测与血量扣除逻辑
+    - 在 `Game.update()` 的敌人更新循环中，检测 `enemy.x + 单位半径 < 0` 时扣除 `enemy.type.leakDamage || 1`
+    - 扣血后设置 `enemy.alive = false` 移除该敌人
+    - 血量降至 0 或以下时：钳制 `playerHP = 0`，设置 `isGameOver = true`
+    - _Requirements: 17.2, 17.4_
+  - [x] 32.5 实现游戏失败状态处理
+    - 在 `Game.update()` 开头检查 `isGameOver`，为 true 时立即返回不执行更新
+    - 在 `Game.render()` 中检查 `isGameOver`，为 true 时绘制失败界面（半透明遮罩 + "游戏失败" 文字 + "返回选关" 按钮）
+    - 失败界面的 "返回选关" 按钮点击后调用 `returnToLevelSelect()`
+    - _Requirements: 17.4_
+  - [x] 32.6 实现血量 HUD 显示
+    - 在 Renderer 中新增 `drawPlayerHP(ctx, playerHP, maxPlayerHP)` 方法
+    - 在地面区域绘制血条（绿→黄→红渐变）和数字（HP: X/Y）
+    - 在 `render()` 的战斗区域渲染中调用
+    - _Requirements: 17.5_
+  - [ ]* 32.7 编写玩家血量系统属性测试
+    - **Property 48: 玩家血量初始化**
+    - **Property 49: 敌人泄漏扣除血量**
+    - **Property 50: 血量归零触发游戏失败**
+    - **Validates: Requirements 17.1, 17.2, 17.4, 17.6**
+
+- [ ] 33. 检查点 - 确保血量与游戏失败机制正常运行
+  - 确保所有测试通过，如有问题请询问用户。
+  - 验证流程：敌人走出左边界扣血 → 血量 HUD 更新 → 血量归零显示失败界面 → 点击返回选关
+
+- [x] 34. 实现士兵智能追踪行为
+  - [x] 34.1 修改 `Soldier` 类，新增 `isSoldier` 标识并移除右边界移除逻辑
+    - 在 `Soldier` 构造函数中新增 `this.isSoldier = true`
+    - 移除 `Soldier.update()` 中 `x > BoardConfig.width` 时设置 `alive = false` 的逻辑
+    - _Requirements: 18.1_
+  - [x] 34.2 修改 `combat-behaviors.js` 中 `melee` 策略的 `move()` 和 `findTarget()`
+    - `findTarget()`：士兵（`unit.isSoldier`）搜索所有方向最近敌人（使用 `Math.abs` 距离），敌人保持原有单向搜索
+    - `move()`：士兵有目标时朝目标方向移动（动态设置 `unit.direction`），无目标时 `direction = 1` 向右移动；添加右边界钳制 `unit.x = Math.min(unit.x, BoardConfig.width - 6)`
+    - 保持 aura 技能和 applyChainLightning 逻辑不变
+    - _Requirements: 18.1, 18.2, 18.3, 18.4_
+  - [x] 34.3 修改 `combat-behaviors.js` 中 `ranged` 策略的 `move()`、`findTarget()` 和 `canEngage()`
+    - `findTarget()`：士兵搜索所有方向最近敌人，优先攻击范围内目标；敌人保持原有单向搜索
+    - `move()`：士兵有目标且在攻击范围内时停下并面朝目标，超出范围时朝目标移动；无目标时向右移动；添加右边界钳制
+    - `canEngage()`：士兵使用 `Math.abs` 绝对距离判定，敌人保持原有单向判定
+    - 保持 applySlowEffect 逻辑不变
+    - _Requirements: 18.1, 18.2, 18.3, 18.4, 18.5_
+  - [ ]* 34.4 编写士兵智能追踪属性测试
+    - **Property 51: 士兵右边界钳制**
+    - **Property 52: 士兵双向追踪最近敌人**
+    - **Property 53: 无敌人时士兵向右待命**
+    - **Property 54: 远程士兵攻击范围内停止移动**
+    - **Validates: Requirements 18.1, 18.2, 18.3, 18.4, 18.5**
+
+- [x] 35. 最终检查点 - 确保血量系统和士兵追踪完整运行
+  - 确保所有测试通过，如有问题请询问用户。
+  - 验证完整流程：士兵追踪敌人 → 敌人突破左边界扣血 → 血量归零游戏失败 → 返回选关
+
 ## 备注
 
 - 标记 `*` 的任务为可选任务，可跳过以加快 MVP 进度

@@ -125,7 +125,7 @@ const enemyList = Object.entries(ENEMIES)
 
 // 棋子按价格排序
 const pieceList = Object.entries(PIECES)
-    .map(([key, val]) => ({ key, ...val, power: piecePower(val), eff: piecePower(val) / val.price }))
+    .map(([key, val]) => ({ key, ...val, power: piecePower(val), eff: piecePower(val) / val.price, fireInterval: val.fireInterval || 2000 }))
     .sort((a, b) => a.price - b.price);
 
 const cheapestPrice = pieceList.length > 0 ? pieceList[0].price : 10;
@@ -262,7 +262,14 @@ function validateStages() {
     let html = [];
     let totalFails = 0, totalWarns = 0, totalPass = 0;
 
-    html.push('🔍 <b>关卡平衡性验证报告</b>\n' + '═'.repeat(55) + '\n');
+    html.push('🔍 <b>关卡平衡性验证报告</b>\n' + '═'.repeat(55));
+
+    // 先输出配置摘要
+    html.push('\n📊 <b>配置数据摘要</b>');
+    html.push(`  棋子类型: ${pieceList.length}种, 平均fireInterval: ${(pieceList.reduce((s,p)=>s+p.fireInterval,0)/pieceList.length/1000).toFixed(1)}秒`);
+    html.push(`  平均单兵战力: ${avgPiecePower.toFixed(1)}, 最便宜棋子: ${cheapestPrice}金`);
+    html.push(`  敌人类型: ${enemyList.length}种, 平均敌人战力: ${(enemyList.reduce((s,e)=>s+e.power,0)/enemyList.length).toFixed(1)}`);
+    html.push('');
 
     for (const stage of currentStages) {
         html.push(`\n📋 <b>关卡 ${stage.id}: ${stage.name}</b>  (${stage.waveConfig.length}波, 初始金币${stage.initialGold})`);
@@ -321,35 +328,63 @@ function waveKillGold(wave) {
 }
 
 /**
- * 估算玩家一波的总战力（更保守的模型）
+ * 估算玩家一波的总战力（基于实际产出模型）
  * 
- * 核心假设：
- * - 一波战斗持续约 20~30 秒
- * - 每个棋子按 fireInterval 产出士兵，但弹球需要时间落地（约 3~5 秒延迟）
- * - 士兵存活时间有限（被敌人击杀），不是所有士兵都能同时存在
- * - 实际有效士兵数 ≈ 棋子数 × 每棋子产出 × 存活率
- * - 存活率受敌人攻击力影响，大约 0.4~0.7
+ * 关键洞察：棋子是持续产出单位！
+ * - 一波战斗持续时间 ≈ 敌人总数 × spawnInterval / 1000 + 10秒（清场时间）
+ * - 每个棋子按 fireInterval 持续发射弹球 → 弹球落地变士兵
+ * - 弹球落地延迟约 3~5 秒，但之后是持续产出
+ * - 实际每棋子产出士兵数 = 战斗时长 / 平均fireInterval
+ * - 士兵会被敌人击杀，同时在场的有效士兵有上限
+ * 
+ * 模型：总战力 = 每个棋子的(单兵战力 × 产出数量 × 存活系数)
  */
-function estimatePlayerPower(gold, ownedPieces) {
+function estimatePlayerPower(gold, ownedPieces, wave) {
     const sorted = [...pieceList].sort((a, b) => b.eff - a.eff);
     let rem = gold, bought = 0;
-    let boughtPower = 0;
+    const boughtPieces = [];
     for (const p of sorted) {
-        while (rem >= p.price) { rem -= p.price; boughtPower += p.power; bought++; }
+        while (rem >= p.price) { rem -= p.price; boughtPieces.push(p); bought++; }
     }
 
-    // 每个棋子每波大约产出 2~3 个有效士兵（考虑发射间隔和弹球落地延迟）
-    const effectiveSoldiersPerPiece = 2.0;
-    // 士兵存活率（敌人会杀死一部分）
-    const survivalRate = 0.5;
+    // 估算这波战斗持续时间（秒）
+    let totalEnemies = 0;
+    let spawnInterval = 2000;
+    if (wave) {
+        totalEnemies = wave.enemies.reduce((s, e) => s + e.count, 0);
+        spawnInterval = wave.spawnInterval || 2000;
+    }
+    const waveDuration = (totalEnemies * spawnInterval / 1000) + 8; // 生成时间 + 清场
 
+    // 计算每个棋子的实际产出
+    // 平均 fireInterval（毫秒）
+    const avgFireInterval = pieceList.length > 0
+        ? pieceList.reduce((s, p) => s + p.fireInterval, 0) / pieceList.length
+        : 2000;
+
+    // 每个棋子在整波中产出的士兵数（减去初始落地延迟 4 秒）
+    const effectiveTime = Math.max(0, waveDuration - 4);
+    const soldiersPerPiece = effectiveTime / (avgFireInterval / 1000);
+
+    // 士兵存活系数：士兵会被敌人杀死，不是所有都能同时存活
+    // 敌人越强，存活率越低；用敌人平均攻击力来估算
+    const avgEnemyAtk = enemyList.length > 0
+        ? enemyList.reduce((s, e) => s + e.attack, 0) / enemyList.length : 2;
+    const avgSoldierHP = pieceList.length > 0
+        ? pieceList.reduce((s, p) => s + p.soldierHP, 0) / pieceList.length : 4;
+    // 士兵平均存活时间（秒）≈ HP / 敌人攻击力（每秒攻击约1次）
+    const soldierLifespan = avgSoldierHP / avgEnemyAtk;
+    // 存活系数 = min(1, 存活时间 / 波次时长) — 越短说明士兵死得快
+    const survivalFactor = Math.min(1.0, soldierLifespan / waveDuration) * 0.7;
+
+    // 同时在场的有效士兵数 ≈ 产出速率 × 存活时间
     const totalPieces = ownedPieces + bought;
-    const avgPow = totalPieces > 0
-        ? (ownedPieces * avgPiecePower + boughtPower) / totalPieces
-        : avgPiecePower;
+    const effectiveSoldiers = totalPieces * soldiersPerPiece * survivalFactor;
 
-    const totalPower = totalPieces * avgPow * effectiveSoldiersPerPiece * survivalRate;
-    return { totalPower, bought };
+    // 总战力 = 有效士兵数 × 平均单兵战力
+    const totalPower = effectiveSoldiers * avgPiecePower;
+
+    return { totalPower, bought, soldiersPerPiece: soldiersPerPiece.toFixed(1), effectiveSoldiers: effectiveSoldiers.toFixed(1), waveDuration: waveDuration.toFixed(0) };
 }
 
 function checkStage(stage, TH) {
@@ -381,15 +416,15 @@ function checkStage(stage, TH) {
     let owned = canBuy;
     for (let i = 0; i < waves.length; i++) {
         const ep = powers[i];
-        const pp = estimatePlayerPower(cumGold, i === 0 ? 0 : owned);
+        const pp = estimatePlayerPower(cumGold, i === 0 ? 0 : owned, waves[i]);
         const ratio = pp.totalPower / ep;
 
         if (ratio < TH.ratioMin) {
-            issues.push({ level:'FAIL', msg:`第${i+1}波玩家战力不足: 比值 ${ratio.toFixed(2)}（玩家${pp.totalPower.toFixed(1)} vs 敌人${ep.toFixed(1)}），几乎无法获胜` });
+            issues.push({ level:'FAIL', msg:`第${i+1}波玩家战力不足: 比值 ${ratio.toFixed(2)}（玩家${pp.totalPower.toFixed(1)} vs 敌人${ep.toFixed(1)}）[${pp.effectiveSoldiers}有效士兵, 波次${pp.waveDuration}秒]` });
         } else if (ratio > TH.ratioMax) {
-            issues.push({ level:'WARN', msg:`第${i+1}波太简单: 比值 ${ratio.toFixed(2)}（玩家${pp.totalPower.toFixed(1)} vs 敌人${ep.toFixed(1)}），缺乏挑战` });
+            issues.push({ level:'WARN', msg:`第${i+1}波太简单: 比值 ${ratio.toFixed(2)}（玩家${pp.totalPower.toFixed(1)} vs 敌人${ep.toFixed(1)}）[${pp.effectiveSoldiers}有效士兵, 波次${pp.waveDuration}秒]` });
         } else {
-            issues.push({ level:'PASS', msg:`第${i+1}波平衡: 比值 ${ratio.toFixed(2)}（玩家${pp.totalPower.toFixed(1)} vs 敌人${ep.toFixed(1)}）` });
+            issues.push({ level:'PASS', msg:`第${i+1}波平衡: 比值 ${ratio.toFixed(2)}（玩家${pp.totalPower.toFixed(1)} vs 敌人${ep.toFixed(1)}）[${pp.effectiveSoldiers}有效士兵]` });
         }
 
         const killRate = Math.max(0.5, Math.min(0.95, ratio * 0.5));
